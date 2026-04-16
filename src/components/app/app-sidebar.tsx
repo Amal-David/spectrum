@@ -70,7 +70,7 @@ export function AppSidebar() {
                     isActive={pathname === item.href}
                   >
                     <item.icon />
-                    <span>{item.title}</span>
+                    <span className="truncate">{item.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -87,7 +87,7 @@ export function AppSidebar() {
                     render={<Link href={`/analysis?groupId=${group.id}`} />}
                     isActive={pathname === "/analysis"}
                   >
-                    <span>{group.name}</span>
+                    <span className="truncate">{group.name}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -99,7 +99,7 @@ export function AppSidebar() {
         <Separator />
         <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
           <span>Total calls</span>
-          <span>{callCount}</span>
+          <span className="font-mono tabular-nums">{callCount}</span>
         </div>
       </SidebarFooter>
       <SidebarRail />

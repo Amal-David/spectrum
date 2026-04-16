@@ -35,7 +35,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">
+      <body className="min-h-full overflow-x-hidden">
         <TooltipProvider>
           <SidebarProvider>
             <AppSidebar />
@@ -49,7 +49,9 @@ export default function RootLayout({
                   </span>
                 </div>
               </header>
-              <main className="flex flex-1 flex-col">{children}</main>
+              <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+                {children}
+              </main>
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>

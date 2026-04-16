@@ -11,8 +11,12 @@ describe("CallsView", () => {
 
     render(<CallsView calls={calls} />)
 
-    await user.click(screen.getByLabelText("Select Founder interview - pricing objections"))
-    await user.click(screen.getByLabelText("Select Pilot agent eval - handoff quality"))
+    await user.click(
+      screen.getByLabelText("Select Mumbai pricing objections - fintech sales")
+    )
+    await user.click(
+      screen.getByLabelText("Select Kolkata repayment assurance - collections")
+    )
 
     const action = screen.getByRole("button", { name: "Analyze selected" })
 

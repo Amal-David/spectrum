@@ -24,11 +24,11 @@ describe("analysis scope helpers", () => {
 
   it("builds a grouped analysis scope when multiple calls are selected", () => {
     const scope = parseAnalysisScope({
-      calls: "call-001,call-005",
+      calls: "call-001,call-006",
     });
 
     expect(scope.kind).toBe("group");
-    expect(scope.callIds).toEqual(["call-001", "call-005"]);
+    expect(scope.callIds).toEqual(["call-001", "call-006"]);
     expect(scope.label).toBe("Pricing friction cluster");
   });
 

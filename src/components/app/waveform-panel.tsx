@@ -62,7 +62,15 @@ export function WaveformPanel({ audioUrl, tracks }: WaveformPanelProps) {
 
     tracks
       .filter((track) =>
-        ["pause", "overlap", "question", "behavior", "emotion"].includes(track.type)
+        [
+          "pause",
+          "overlap",
+          "question",
+          "behavior",
+          "emotion",
+          "quality",
+          "event",
+        ].includes(track.type)
       )
       .forEach((track) => {
         track.items.forEach((item) => {
@@ -72,6 +80,8 @@ export function WaveformPanel({ audioUrl, tracks }: WaveformPanelProps) {
             color:
               track.type === "overlap"
                 ? "rgba(239, 68, 68, 0.18)"
+                : track.type === "quality"
+                  ? "rgba(245, 158, 11, 0.18)"
                 : track.type === "emotion"
                   ? "rgba(113, 113, 122, 0.15)"
                   : "rgba(161, 161, 170, 0.18)",
@@ -102,11 +112,11 @@ export function WaveformPanel({ audioUrl, tracks }: WaveformPanelProps) {
   )
 
   return (
-    <Card>
+    <Card className="min-w-0 overflow-hidden">
       <CardHeader>
         <CardTitle>Timeline / player</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <Button
@@ -130,46 +140,54 @@ export function WaveformPanel({ audioUrl, tracks }: WaveformPanelProps) {
           </label>
         </div>
 
-        <div className="rounded-lg border p-3">
-          <div ref={timelineRef} />
-          <div ref={waveformRef} />
-          <div ref={minimapRef} />
+        <div className="overflow-x-auto rounded-lg border">
+          <div className="min-w-[720px] p-3 font-mono text-xs tabular-nums">
+            <div ref={timelineRef} />
+            <div ref={waveformRef} />
+            <div ref={minimapRef} />
+          </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {tracks.map((track) => (
-            <div key={track.id} className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{track.label}</span>
-                <span className="text-xs text-muted-foreground">
-                  {track.type === "emotion" ? "experimental where shown" : "computed"}
-                </span>
-              </div>
-              <div className="relative h-8 rounded-lg border bg-muted/30">
-                {track.items.map((item) => {
-                  const left = (item.startMs / totalDurationMs) * 100
-                  const width = ((item.endMs - item.startMs) / totalDurationMs) * 100
+        <div className="flex min-w-0 flex-col gap-3 overflow-x-auto">
+          <div className="flex min-w-[720px] flex-col gap-3">
+            {tracks.map((track) => (
+              <div key={track.id} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{track.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {track.type === "emotion"
+                      ? "experimental where shown"
+                      : track.type === "quality"
+                        ? "trust and quality overlays"
+                        : "computed"}
+                  </span>
+                </div>
+                <div className="relative h-8 rounded-lg border bg-muted/30">
+                  {track.items.map((item) => {
+                    const left = (item.startMs / totalDurationMs) * 100
+                    const width = ((item.endMs - item.startMs) / totalDurationMs) * 100
 
-                  return (
-                    <button
-                      key={item.id}
-                      className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md border bg-background px-2 text-xs"
-                      onClick={() =>
-                        wavesurferRef.current?.setTime(item.startMs / totalDurationMs)
-                      }
-                      style={{
-                        left: `${left}%`,
-                        width: `${Math.max(width, 3)}%`,
-                      }}
-                      type="button"
-                    >
-                      <span className="truncate">{item.label}</span>
-                    </button>
-                  )
-                })}
+                    return (
+                      <button
+                        key={item.id}
+                        className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md border bg-background px-2 text-xs font-mono tabular-nums"
+                        onClick={() =>
+                          wavesurferRef.current?.setTime(item.startMs / totalDurationMs)
+                        }
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(width, 3)}%`,
+                        }}
+                        type="button"
+                      >
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
