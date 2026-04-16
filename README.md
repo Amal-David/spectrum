@@ -28,25 +28,6 @@ That foundation should work across:
 - research and discovery conversations
 - any voice-first workflow where "how it was said" matters as much as "what was said"
 
-## Current state
-
-Spectrum is an open-source call analytics SDK and UI for teams that want structured voice intelligence without building the full stack from scratch.
-
-Today the repo includes:
-
-- a Python core for schemas, adapters, datasets, and run artifacts
-- an analysis pipeline that produces canonical `bundle.json` session outputs
-- a FastAPI backend for upload, processing, session reads, and manual speaker-role overrides
-- a Next.js dashboard for overview, compare, session detail, transcript inspection, waveform-first review, and upload/progress flows
-- a demo/bootstrap path for local sample sessions and dataset-backed examples
-
-The current product direction is:
-
-- human-centered conversation analysis
-- quality-aware interpretation instead of naive emotion overclaiming
-- visible explainability masks and provenance
-- open, inspectable outputs instead of opaque one-score APIs
-
 ## Capability status
 
 ### Core platform
@@ -173,6 +154,39 @@ The project is meant to grow into a proper open-source voice analytics foundatio
 - reusable ingestion and analysis building blocks
 - a lightweight but useful inspection UI
 - a practical starting point for teams building interview, support, research, and voice AI analytics products
+
+## Built with
+
+Spectrum builds on top of a number of open-source tools and external services.
+
+Core project and runtime dependencies:
+
+- [FastAPI](https://fastapi.tiangolo.com/) for the backend API
+- [Pydantic](https://docs.pydantic.dev/) for shared typed models and schemas
+- [Next.js](https://nextjs.org/) and React for the dashboard UI
+- [FFmpeg](https://ffmpeg.org/) for audio normalization and telephony rendering
+- [librosa](https://librosa.org/) and NumPy for audio feature extraction and signal processing
+- [pytest](https://docs.pytest.org/) for automated verification
+
+Current analysis integrations and optional providers:
+
+- [OpenAI](https://platform.openai.com/) for optional transcription- and analysis-assisted workflows
+- `faster-whisper` for local ASR fallback in supported setups
+
+Spectrum does not claim to replace or subsume those projects. It composes them into a higher-level open call analytics SDK and inspection workflow.
+
+## Contributing
+
+Contributions are welcome.
+
+If you want to contribute:
+
+1. read [CONTRIBUTING.md](./CONTRIBUTING.md)
+2. open an issue or discussion for larger changes
+3. keep data, runs, secrets, and local media out of git
+4. prefer small, reviewable pull requests with tests where practical
+
+For agent-oriented repo guidance, see [AGENTS.md](./AGENTS.md).
 
 ## License
 
