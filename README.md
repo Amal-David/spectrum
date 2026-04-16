@@ -1,109 +1,171 @@
 # Spectrum
 
-Spectrum is an open voice analytics platform for turning raw conversations into structured emotional, behavioral, and operational signals.
+## Voice analytics that goes beyond transcripts
 
-The project is built around a simple idea: transcripts alone are not enough. Teams running interviews, support calls, research conversations, reminder flows, and AI voice sessions need to understand pauses, hesitation, interruptions, talk balance, response latency, non-verbal cues, emotional shifts, and quality conditions, not just the words that were said.
+Spectrum turns recorded conversations into structured voice intelligence: transcript, timing, speaker balance, pauses, overlaps, prosody, non-verbal cues, and evidence-backed behavioral signals.
 
-Think of Spectrum as Google Analytics for voice:
+Built as a hackathon-speed prototype, Spectrum explores a simple thesis: text-only conversation analytics miss the most human parts of a call.
 
-- a reusable analytics SDK for audio-native products
-- a canonical schema for voice signals
-- a lightweight UI for exploring sessions, timelines, transcript emotion, and speaker behavior
+## The Problem
 
-## Vision
+Most voice products flatten audio into a transcript.
 
-Spectrum aims to be the open foundation for voice analytics:
+That loses the signals that usually matter most:
 
-- ingest raw calls or audio clips
-- normalize them into a canonical session bundle
-- extract quality, structure, transcript, emotion, prosody, and behavioral signals
-- let downstream teams build vertical workflows on top of that foundation
+- hesitation before an answer
+- interruptions and talk balance
+- pacing, energy, and response latency
+- quality issues that distort interpretation
+- human-vs-AI role context in mixed conversations
 
-That foundation should work across:
+For support, research, coaching, and voice-agent teams, that means weaker QA, weaker personalization, and weaker insight into how a conversation actually unfolded.
 
-- user interviews
-- hiring and screening calls
-- support and ops calls
-- AI voice agents
-- research and discovery conversations
-- any voice-first workflow where "how it was said" matters as much as "what was said"
+## Why Spectrum
 
-## Capability status
+Most tools stop at one layer:
 
-### Core platform
-
-| Area | Status | Notes |
+| Tool category | What it gives you | What is still missing |
 | --- | --- | --- |
-| Canonical session bundle | `✓ Done` | Quality, environment, turns, events, questions, signals, transcript spans, diarization, waveform, spectrogram, and timeline tracks are modeled in one shared schema. |
-| Persisted run artifacts | `✓ Done` | Analysis outputs are written under `runs/<session_id>/...` with `bundle.json` as the main read model. |
-| Dataset and demo importers | `✓ Done` | Includes demo-pack support and curated local materialized dataset import paths. |
-| Package structure | `✓ Done` | Split across `core`, `pipeline`, `api`, and `dashboard`. |
+| Speech-to-text | Words | No pacing, turn-taking, or behavioral context |
+| Emotion API | Labels | Weak evidence trail and easy overclaiming |
+| Analytics dashboard | Charts | Often detached from the raw conversation |
+| Spectrum | One evidence-linked session bundle plus API and UI | A fuller foundation for voice intelligence workflows |
 
-### Analysis capabilities
+Spectrum is closer to "Google Analytics for voice" than a one-off transcript or emotion wrapper.
 
-| Capability | Status | Notes |
-| --- | --- | --- |
-| Audio normalization | `✓ Done` | Includes normalized and telephony-rendered audio artifacts. |
-| Quality scoring | `✓ Done` | SNR, noise, clipping, VAD issues, and explainability flags are supported. |
-| Turn and structure analysis | `✓ Done` | Turns, pauses, overlaps, events, and response timing are part of the pipeline. |
-| Transcript sentence and token spans | `✓ Done` | Sentence-level and token-level transcript artifacts are supported. |
-| Human vs AI speaker roles | `✓ Done` | Includes automatic role assignment plus manual override support. |
-| Waveform and spectrogram views | `✓ Done` | Both are rendered in the session workspace. |
-| Prosody tracks and cue artifacts | `✓ Done` | Pitch, energy, speaking-rate tracks, and non-verbal cue outputs are present. |
-| Uploaded-audio diarization strength | `~ In progress` | Works best when stronger adapters are available; degraded mode still needs improvement. |
-| Non-verbal attribution on arbitrary uploads | `~ In progress` | Stronger on benchmark/demo-backed sessions than on all uploaded audio. |
-| Accent / age / profile depth | `~ In progress` | Confidence-gated today; several fields remain intentionally conservative. |
-| Emotion and behavior benchmarking depth | `~ In progress` | A number of signals still rely on heuristics or light model assistance. |
+## What Spectrum Does
 
-### Product surface
+Given an uploaded audio file or imported demo session, Spectrum:
 
-| Surface | Status | Notes |
-| --- | --- | --- |
-| Upload and async processing flow | `✓ Done` | Includes session creation, upload, processing, and progress reporting. |
-| Overview and compare screens | `✓ Done` | Dashboard supports session browsing and side-by-side comparison. |
-| Session workspace | `✓ Done` | Transcript-first and waveform-first review experiences are both present. |
-| Role-aware transcript filtering | `✓ Done` | Human-only, Human + AI, and AI context views are supported. |
-| Session APIs | `✓ Done` | Bundle, transcript, profile, roles, waveform, spectrogram, prosody, diarization, and cue endpoints exist. |
-| Public SDK ergonomics | `~ In progress` | Internal interfaces are strong, but the external developer-facing SDK surface is not finalized yet. |
-| Hosted / multi-tenant product layer | `○ Not done yet` | No auth, tenancy, or managed cloud product layer yet. |
-| Privacy / governance layer | `○ Not done yet` | No finalized policy or enterprise controls yet. |
+- normalizes audio and stores a canonical session bundle
+- generates transcript, sentence spans, token spans, and speaker timing
+- extracts waveform, spectrogram, prosody tracks, and non-verbal cues
+- computes evidence-backed behavioral and affective proxy signals with explainability masks
+- exposes the result through a FastAPI backend and a Next.js dashboard
 
-### Validation and research
+## Demo Flow
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Python API and pipeline tests | `✓ Done` | Core workflow behavior is covered by tests. |
-| Dashboard buildability | `✓ Done` | The UI builds from the workspace. |
-| Cross-region and cross-language calibration | `○ Not done yet` | Still needs broader evaluation and grounding. |
-| Long-call cohort analytics | `~ In progress` | The foundation is there, but the aggregate analytics layer needs to go further. |
-| Benchmark breadth | `~ In progress` | Coverage exists, but is not yet comprehensive. |
+1. Create a session and upload audio.
+2. Run processing synchronously or asynchronously.
+3. Review the output in the dashboard:
+   - overview and compare surfaces
+   - a detailed session workspace with transcript, waveform, spectrogram, cues, and signals
+   - role-aware controls for human-vs-AI conversation review
+4. Pull the same data back from the API as structured JSON.
 
-## Near-term roadmap
+> Spectrum ships today as an uploaded or imported recording analysis workflow. Real-time streaming is a future direction, not a current product claim.
 
-| Priority | Area | What comes next |
-| --- | --- | --- |
-| 1 | Uploaded-audio path | Harden default transcription + diarization and improve degraded-mode behavior. |
-| 2 | SDK surface | Turn the current bundle and pipeline contracts into a documented developer-facing SDK. |
-| 3 | Signal credibility | Replace more heuristics with stronger adapters, benchmarks, and clearer calibration. |
-| 4 | Aggregate analytics | Push the overview toward a fuller multi-session voice analytics console. |
-| 5 | Documentation | Publish a clearer roadmap and separate stable surfaces from experimental ones. |
+## How It Works
 
-## Architecture
+```mermaid
+flowchart LR
+  A["Audio upload / dataset import"] --> B["Normalization + quality analysis"]
+  B --> C["Transcription + sentence/token spans"]
+  B --> D["Speaker timing + diarization"]
+  B --> E["Waveform / spectrogram / prosody tracks"]
+  C --> F["Question + conversation analysis"]
+  D --> G["Human-vs-AI role inference + overrides"]
+  E --> H["Non-verbal cues + behavioral signals"]
+  F --> I["Canonical session bundle"]
+  G --> I
+  H --> I
+  I --> J["FastAPI endpoints"]
+  I --> K["Next.js dashboard"]
+```
+
+## What Ships Today
+
+| Surface | Current capability |
+| --- | --- |
+| Upload pipeline | Create sessions, upload audio, and process sync or async |
+| Analysis bundle | Transcript, turns, events, questions, signals, roles, waveform, spectrogram, and prosody |
+| Dashboard | Browse sessions, compare runs, and inspect a detailed session workspace |
+| API | Fetch bundle, transcript, profile, roles, diarization, cues, prosody, waveform, spectrogram, questions, and signals |
+| Demo data | Import a demo pack or curated dataset samples for instant exploration |
+
+## Hard Parts We Tackled
+
+- turning raw audio into a stable, reusable session bundle instead of one-off outputs
+- keeping transcript, speaker timing, waveform, spectrogram, cues, and signals aligned in one review surface
+- confidence-gating behavioral interpretation when low SNR or VAD instability should downweight claims
+- supporting both uploaded audio and saved demo sessions through the same API and dashboard workflow
+
+## Example Output
+
+This is a shortened excerpt from a real saved `bundle.json` in the repo:
+
+```json
+{
+  "session": {
+    "session_id": "97c51a06-a626-4361-9244-9fb4f832ad57",
+    "analysis_mode": "voice_profile",
+    "source_type": "direct_audio_file",
+    "duration_sec": 1.0,
+    "status": "completed"
+  },
+  "quality": {
+    "avg_snr_db": 7.655,
+    "noise_ratio": 0.259,
+    "is_usable": true,
+    "warning_flags": [
+      "silero_vad_fallback",
+      "shorter_than_voice_profile_target",
+      "low_snr"
+    ]
+  },
+  "signals": [
+    {
+      "key": "hesitation",
+      "score": 0,
+      "confidence": 0.28,
+      "summary": "Pause and filler burden averaged 0/100 across question moments."
+    },
+    {
+      "key": "confidence_like_behavior",
+      "score": 68,
+      "confidence": 0.28,
+      "summary": "Direct answers and lower uncertainty markers lift this behavioral confidence proxy."
+    }
+  ]
+}
+```
+
+## Use Cases
+
+- customer support QA and escalation review
+- user research and interview analysis
+- coaching and call feedback
+- voice-agent debugging and human-vs-AI interaction analysis
+- any workflow where how it was said matters as much as what was said
+
+## Tech Stack
+
+| Layer | Stack |
+| --- | --- |
+| API | FastAPI, Pydantic |
+| Dashboard | Next.js, React |
+| Audio processing | FFmpeg, librosa, NumPy |
+| Analysis pipeline | Python pipeline with canonical models and persisted run artifacts |
+| Optional AI provider | OpenAI-backed upload analysis and role inference |
+| Local ASR fallback | `faster-whisper` in supported setups |
+| Verification | pytest |
+
+## Repo Layout
 
 ```text
 spectrum/
   packages/
-    api/        FastAPI service and upload/session endpoints
+    api/        FastAPI service and session endpoints
     core/       canonical models, dataset helpers, registry metadata
     dashboard/  Next.js UI for overview, compare, and session review
-    pipeline/   normalization, analysis, importers, run persistence
+    pipeline/   normalization, analysis, importers, and run persistence
   scripts/      local helpers
   tests/        API and pipeline coverage
 ```
 
-## Local development
+## Local Development
 
-Create the Python environment and install the app:
+Create the Python environment and install the backend dependencies:
 
 ```bash
 uv venv --python 3.11
@@ -120,16 +182,40 @@ pnpm install
 Run the API:
 
 ```bash
-uv run uvicorn spectrum_api.main:app --reload --port 8013
+pnpm api:dev
 ```
 
 Run the dashboard:
 
 ```bash
-pnpm --dir packages/dashboard dev --port 3040
+pnpm dashboard:dev
 ```
 
-## Repo policy
+## API Path
+
+The main workflow is:
+
+- `POST /api/v1/sessions`
+- `POST /api/v1/sessions/{job_id}/upload`
+- `POST /api/v1/sessions/{job_id}/process` or `POST /api/v1/sessions/{job_id}/process-async`
+- `GET /api/v1/sessions/{job_id}/bundle`
+
+Additional endpoints expose transcript, roles, profile, diarization, non-verbal cues, prosody, waveform, spectrogram, questions, signals, compare data, and adapter registry metadata.
+
+## Vision
+
+Text-only AI is incomplete.
+
+The next wave of voice intelligence systems should preserve evidence, uncertainty, and conversation structure instead of flattening people into transcripts or overconfident emotion labels.
+
+Spectrum is a step in that direction:
+
+- post-call voice intelligence today
+- stronger calibration and adapter depth next
+- better developer-facing SDK ergonomics after that
+- streaming and broader conversation intelligence later
+
+## Repo Notes
 
 This repo is intentionally code-first.
 
@@ -137,43 +223,8 @@ These stay local and are not intended for source control:
 
 - `data/` raw and cached dataset payloads
 - `runs/` generated analysis outputs
-- `fixtures/demo_samples/` local media
 - `.env` and any local secrets
 - generated build output such as `.next/`
-
-The root `.gitignore` is configured to keep those local-only artifacts out of git while preserving safe placeholder files and lightweight manifests.
-
-## Open source status
-
-Spectrum is MIT licensed.
-
-The project is meant to grow into a proper open-source voice analytics foundation:
-
-- clear canonical schemas
-- transparent outputs
-- reusable ingestion and analysis building blocks
-- a lightweight but useful inspection UI
-- a practical starting point for teams building interview, support, research, and voice AI analytics products
-
-## Built with
-
-Spectrum builds on top of a number of open-source tools and external services.
-
-Core project and runtime dependencies:
-
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend API
-- [Pydantic](https://docs.pydantic.dev/) for shared typed models and schemas
-- [Next.js](https://nextjs.org/) and React for the dashboard UI
-- [FFmpeg](https://ffmpeg.org/) for audio normalization and telephony rendering
-- [librosa](https://librosa.org/) and NumPy for audio feature extraction and signal processing
-- [pytest](https://docs.pytest.org/) for automated verification
-
-Current analysis integrations and optional providers:
-
-- [OpenAI](https://platform.openai.com/) for optional transcription- and analysis-assisted workflows
-- `faster-whisper` for local ASR fallback in supported setups
-
-Spectrum does not claim to replace or subsume those projects. It composes them into a higher-level open call analytics SDK and inspection workflow.
 
 ## Contributing
 
