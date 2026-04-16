@@ -566,7 +566,17 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
             </span>
           </div>
 
-          {readinessTier === "transcript_only" || bundle.diarization.readiness_state === "blocked" ? (
+          {readinessTier === "blocked" ? (
+            <div className="gate-banner">
+              <strong>Transcript extraction is blocked for this upload.</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "Quality and waveform inspection may still be available, but the current provider stack did not produce a usable transcript."}
+                {transcriptionDecision ? ` Transcript path: ${transcriptionDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
+            </div>
+          ) : null}
+
+          {readinessTier === "transcript_only" || (bundle.diarization.readiness_state === "blocked" && readinessTier !== "blocked") ? (
             <div className="gate-banner">
               <strong>Transcript and quality analysis are ready. Speaker-attributed cues are limited for this upload.</strong>
               <span className="microcopy">
@@ -576,7 +586,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
             </div>
           ) : null}
 
-          {readinessTier === "partial" || bundle.diarization.readiness_state === "fallback" || attributionLimited ? (
+          {readinessTier === "partial" || (bundle.diarization.readiness_state === "fallback" && readinessTier !== "blocked") || attributionLimited ? (
             <div className="gate-banner fallback">
               <strong>{attributionLimited ? "Cue timing is available, but speaker attribution stays limited." : "Using limited speaker coverage for this upload."}</strong>
               <span className="microcopy">
