@@ -1,0 +1,128 @@
+{
+  "samples": [
+    {
+      "job_id": "voice-ravdess-male-01",
+      "title": "Voice Profile Baseline A",
+      "analysis_mode": "voice_profile",
+      "language": "en",
+      "expected_speaker_count": 1,
+      "source_dataset": "ravdess_speech_16k",
+      "source_path": "data/raw/ravdess_speech_16k/Audio_Speech_Actors_01-24_16k/Actor_01/03-01-01-01-01-01-01.wav",
+      "fixture_strategy": "direct_file",
+      "status": "ready",
+      "notes": "Voice-profile placeholder until an Indian-English accent dataset is approved locally.",
+      "analysis_label": "accent_placeholder"
+    },
+    {
+      "job_id": "voice-ravdess-female-01",
+      "title": "Voice Profile Baseline B",
+      "analysis_mode": "voice_profile",
+      "language": "en",
+      "expected_speaker_count": 1,
+      "source_dataset": "ravdess_speech_16k",
+      "source_path": "data/raw/ravdess_speech_16k/Audio_Speech_Actors_01-24_16k/Actor_02/03-01-02-01-01-01-02.wav",
+      "fixture_strategy": "direct_file",
+      "status": "ready",
+      "notes": "Voice-profile placeholder until an Indian-English accent dataset is approved locally.",
+      "analysis_label": "accent_placeholder"
+    },
+    {
+      "job_id": "voice-ravdess-male-02",
+      "title": "Voice Profile Baseline C",
+      "analysis_mode": "voice_profile",
+      "language": "en",
+      "expected_speaker_count": 1,
+      "source_dataset": "ravdess_speech_16k",
+      "source_path": "data/raw/ravdess_speech_16k/Audio_Speech_Actors_01-24_16k/Actor_03/03-01-03-01-02-01-03.wav",
+      "fixture_strategy": "direct_file",
+      "status": "ready",
+      "notes": "Voice-profile placeholder until an Indian-English accent dataset is approved locally.",
+      "analysis_label": "accent_placeholder"
+    },
+    {
+      "job_id": "voice-ravdess-female-02",
+      "title": "Voice Profile Baseline D",
+      "analysis_mode": "voice_profile",
+      "language": "en",
+      "expected_speaker_count": 1,
+      "source_dataset": "ravdess_speech_16k",
+      "source_path": "data/raw/ravdess_speech_16k/Audio_Speech_Actors_01-24_16k/Actor_04/03-01-04-01-02-01-04.wav",
+      "fixture_strategy": "direct_file",
+      "status": "ready",
+      "notes": "Voice-profile placeholder until an Indian-English accent dataset is approved locally.",
+      "analysis_label": "accent_placeholder"
+    },
+    {
+      "job_id": "conversation-tamil-01",
+      "title": "Tamil Conversation Sample",
+      "analysis_mode": "conversation_analytics",
+      "language": "ta",
+      "expected_speaker_count": 2,
+      "source_dataset": "indic_audio_natural_conversations_sample",
+      "fixture_strategy": "conversation_parquet_language_pick",
+      "selector": {
+        "language": "tamil"
+      },
+      "status": "ready",
+      "notes": "Conversation analytics sample materialized from the Snorbyte sample parquet."
+    },
+    {
+      "job_id": "conversation-telugu-01",
+      "title": "Telugu Conversation Sample",
+      "analysis_mode": "conversation_analytics",
+      "language": "te",
+      "expected_speaker_count": 2,
+      "source_dataset": "indic_audio_natural_conversations_sample",
+      "fixture_strategy": "conversation_parquet_language_pick",
+      "selector": {
+        "language": "telugu"
+      },
+      "status": "ready",
+      "notes": "Conversation analytics sample materialized from the Snorbyte sample parquet."
+    },
+    {
+      "job_id": "conversation-kannada-01",
+      "title": "Kannada Conversation Sample",
+      "analysis_mode": "conversation_analytics",
+      "language": "kn",
+      "expected_speaker_count": 2,
+      "source_dataset": "indic_audio_natural_conversations_sample",
+      "fixture_strategy": "conversation_parquet_language_pick",
+      "selector": {
+        "language": "kannada"
+      },
+      "status": "ready",
+      "notes": "Conversation analytics sample materialized from the Snorbyte sample parquet."
+    },
+    {
+      "job_id": "meeting-ami-laughter-01",
+      "title": "AMI Laughter Benchmark",
+      "analysis_mode": "full",
+      "language": "en",
+      "expected_speaker_count": 4,
+      "source_dataset": "ami_corpus",
+      "fixture_strategy": "ami_benchmark_pick",
+      "selector": {
+        "meeting_id": "ES2002a",
+        "start_sec": 236.0,
+        "duration_sec": 18.0
+      },
+      "status": "ready",
+      "notes": "Trimmed AMI meeting window with benchmark-aligned laughter and speaker timing."
+    },
+    {
+      "job_id": "conversation-gujarati-01",
+      "title": "Gujarati Conversation Sample",
+      "analysis_mode": "full",
+      "language": "gu",
+      "expected_speaker_count": 2,
+      "source_dataset": "indic_audio_natural_conversations_sample",
+      "fixture_strategy": "conversation_parquet_language_pick",
+      "selector": {
+        "language": "gujarati"
+      },
+      "status": "ready",
+      "notes": "Full-mode sample with conversation analytics first and dominant-speaker metadata hints."
+    }
+  ]
+}

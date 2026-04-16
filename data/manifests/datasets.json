@@ -1,0 +1,441 @@
+{
+  "version": 1,
+  "groups": {
+    "wave1_open": [
+      "ami_corpus",
+      "meld",
+      "ravdess_speech_16k",
+      "libri_mixed_speakers_slr135"
+    ],
+    "conversational_open": [
+      "podcast_fillers_processed",
+      "voxconverse"
+    ],
+    "gated": [
+      "iemocap",
+      "msp_podcast",
+      "msp_conversation"
+    ]
+  },
+  "datasets": [
+    {
+      "id": "ami_corpus",
+      "title": "AMI Corpus",
+      "source_url": "https://groups.inf.ed.ac.uk/ami/download/",
+      "license": "CC BY 4.0",
+      "access_type": "open_manual_download",
+      "modalities": [
+        "audio",
+        "transcript",
+        "annotations"
+      ],
+      "splits": [
+        "smoke_es2002a"
+      ],
+      "target_dir": "data/raw/ami_corpus",
+      "pipeline_coverage": [
+        "asr",
+        "diarization",
+        "vad",
+        "prosody",
+        "benchmark"
+      ],
+      "notes": [
+        "Wave 1 intentionally uses one scenario meeting audio file plus the public manual and automatic annotation bundles.",
+        "Full-size videos are not included in this workflow."
+      ],
+      "download": {
+        "items": [
+          {
+            "filename": "ami_public_manual_1.6.2.zip",
+            "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip",
+            "extract": true
+          },
+          {
+            "filename": "ami_public_auto_1.5.1.zip",
+            "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_auto_1.5.1.zip",
+            "extract": true
+          },
+          {
+            "filename": "ES2002a.Mix-Headset.wav",
+            "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror//amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav",
+            "target_relpath": "amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav"
+          },
+          {
+            "filename": "CCBY4.0.txt",
+            "url": "https://groups.inf.ed.ac.uk/ami/download/CCBY4.0.txt",
+            "target_relpath": "licenses/CCBY4.0.txt"
+          }
+        ]
+      },
+      "verification_rules": {
+        "required_all_globs": [
+          "**/ES2002a.Mix-Headset.wav",
+          "**/meetings.xml"
+        ],
+        "transcript_globs": [
+          "**/*.words.xml",
+          "**/*.segments.xml",
+          "**/meetings.xml"
+        ],
+        "label_globs": [
+          "**/*.topic.xml",
+          "**/*.dialog-act.xml",
+          "**/*.segments.xml"
+        ]
+      }
+    },
+    {
+      "id": "meld",
+      "title": "MELD",
+      "source_url": "https://affective-meld.github.io/",
+      "license": "Upstream MELD dataset distribution terms; review source before redistribution",
+      "access_type": "open",
+      "modalities": [
+        "text",
+        "audio",
+        "video",
+        "emotion",
+        "sentiment"
+      ],
+      "splits": [
+        "dev",
+        "test",
+        "train"
+      ],
+      "target_dir": "data/raw/meld",
+      "pipeline_coverage": [
+        "asr",
+        "affect",
+        "benchmark"
+      ],
+      "notes": [
+        "The raw media tarball is large and contains the conversation media assets for all splits.",
+        "The code repository is GPL-3.0, but dataset handling should follow the upstream project and linked assets."
+      ],
+      "download": {
+        "items": [
+          {
+            "filename": "train_sent_emo.csv",
+            "url": "https://raw.githubusercontent.com/declare-lab/MELD/master/data/MELD/train_sent_emo.csv",
+            "target_relpath": "labels/train_sent_emo.csv"
+          },
+          {
+            "filename": "dev_sent_emo.csv",
+            "url": "https://raw.githubusercontent.com/declare-lab/MELD/master/data/MELD/dev_sent_emo.csv",
+            "target_relpath": "labels/dev_sent_emo.csv"
+          },
+          {
+            "filename": "test_sent_emo.csv",
+            "url": "https://raw.githubusercontent.com/declare-lab/MELD/master/data/MELD/test_sent_emo.csv",
+            "target_relpath": "labels/test_sent_emo.csv"
+          },
+          {
+            "filename": "MELD.Raw.tar.gz",
+            "url": "https://web.eecs.umich.edu/~mihalcea/downloads/MELD.Raw.tar.gz",
+            "extract": true
+          }
+        ]
+      },
+      "verification_rules": {
+        "required_all_globs": [
+          "**/train_sent_emo.csv",
+          "**/dev_sent_emo.csv",
+          "**/test_sent_emo.csv",
+          "**/*.mp4"
+        ],
+        "transcript_globs": [
+          "**/train_sent_emo.csv",
+          "**/dev_sent_emo.csv",
+          "**/test_sent_emo.csv"
+        ],
+        "label_globs": [
+          "**/train_sent_emo.csv",
+          "**/dev_sent_emo.csv",
+          "**/test_sent_emo.csv"
+        ]
+      }
+    },
+    {
+      "id": "ravdess_speech_16k",
+      "title": "RAVDESS Speech 16K",
+      "source_url": "https://zenodo.org/records/11063852",
+      "license": "CC BY 4.0",
+      "access_type": "open",
+      "modalities": [
+        "audio",
+        "prosody",
+        "affect"
+      ],
+      "splits": [
+        "all"
+      ],
+      "target_dir": "data/raw/ravdess_speech_16k",
+      "pipeline_coverage": [
+        "prosody",
+        "affect",
+        "benchmark"
+      ],
+      "download": {
+        "items": [
+          {
+            "filename": "Audio_Speech_Actors_01-24_16k.zip",
+            "url": "https://zenodo.org/records/11063852/files/Audio_Speech_Actors_01-24_16k.zip?download=1",
+            "extract": true,
+            "checksum_md5": "ba1047f37698c0c1ec72a86179e12223"
+          }
+        ]
+      },
+      "verification_rules": {
+        "required_all_globs": [
+          "**/Actor_01/*.wav"
+        ],
+        "min_media_files": 1440,
+        "transcript_globs": [],
+        "label_globs": []
+      }
+    },
+    {
+      "id": "libri_mixed_speakers_slr135",
+      "title": "Libri Mixed Speakers (OpenSLR 135)",
+      "source_url": "https://www.openslr.org/135/",
+      "license": "CC BY-SA 3.0 US",
+      "access_type": "open",
+      "modalities": [
+        "audio",
+        "overlap",
+        "benchmark",
+        "derived_features"
+      ],
+      "splits": [
+        "test"
+      ],
+      "target_dir": "data/raw/libri_mixed_speakers_slr135",
+      "pipeline_coverage": [
+        "diarization",
+        "vad",
+        "benchmark"
+      ],
+      "notes": [
+        "Wave 1 uses only the `test` archive to keep the overlap benchmark leaner than the full train plus test bundle."
+      ],
+      "download": {
+        "items": [
+          {
+            "filename": "test.tar.gz",
+            "url": "https://openslr.trmal.net/resources/135/test.tar.gz",
+            "extract": true
+          }
+        ]
+      },
+      "verification_rules": {
+        "required_any_globs": [
+          "**/*.wav",
+          "**/*.flac",
+          "**/*.npy"
+        ],
+        "min_media_files": 1,
+        "transcript_globs": [],
+        "label_globs": []
+      }
+    },
+    {
+      "id": "podcast_fillers_processed",
+      "title": "PodcastFillers Processed",
+      "source_url": "https://huggingface.co/datasets/ylacombe/podcast_fillers_processed",
+      "license": "CC BY 3.0 subset",
+      "access_type": "open",
+      "modalities": [
+        "audio",
+        "text",
+        "speaker_segments"
+      ],
+      "splits": [
+        "train"
+      ],
+      "target_dir": "data/raw/podcast_fillers_processed",
+      "pipeline_coverage": [
+        "asr",
+        "diarization",
+        "vad",
+        "prosody",
+        "benchmark"
+      ],
+      "notes": [
+        "This Hugging Face dataset keeps only the CC BY 3.0 podcast subset from PodcastFillers.",
+        "The repository is parquet-backed, so the downloaded files are already the ready-to-use representation rather than a raw archive."
+      ],
+      "download": {
+        "snapshot": {
+          "repo_id": "ylacombe/podcast_fillers_processed",
+          "repo_type": "dataset",
+          "allow_patterns": [
+            "CC_BY_3.0/*.parquet",
+            "README.md"
+          ],
+          "max_workers": 4
+        }
+      },
+      "inventory_probe": {
+        "type": "huggingface_first_rows",
+        "dataset": "ylacombe/podcast_fillers_processed",
+        "config": "CC_BY_3.0",
+        "split": "train",
+        "audio_field": "audio",
+        "start_field": "start",
+        "end_field": "end"
+      },
+      "verification_rules": {
+        "required_all_globs": [
+          "**/*.parquet",
+          "**/README.md"
+        ],
+        "transcript_globs": [
+          "**/*.parquet"
+        ],
+        "label_globs": [
+          "**/*.parquet"
+        ]
+      }
+    },
+    {
+      "id": "voxconverse",
+      "title": "VoxConverse",
+      "source_url": "https://huggingface.co/datasets/diarizers-community/voxconverse",
+      "license": "CC BY 4.0",
+      "access_type": "open",
+      "modalities": [
+        "audio",
+        "text",
+        "speaker_diarization"
+      ],
+      "splits": [
+        "dev",
+        "test"
+      ],
+      "target_dir": "data/raw/voxconverse",
+      "pipeline_coverage": [
+        "diarization",
+        "vad",
+        "benchmark"
+      ],
+      "notes": [
+        "The original corpus is audio-visual, but this Hugging Face package gives a parquet-backed audio and text representation that is easy to pull programmatically.",
+        "This is a strong in-the-wild conversational benchmark for multi-speaker segmentation and overlap behavior."
+      ],
+      "download": {
+        "snapshot": {
+          "repo_id": "diarizers-community/voxconverse",
+          "repo_type": "dataset",
+          "allow_patterns": [
+            "data/*.parquet",
+            "README.md"
+          ],
+          "max_workers": 4
+        }
+      },
+      "verification_rules": {
+        "required_all_globs": [
+          "**/*.parquet",
+          "**/README.md"
+        ],
+        "transcript_globs": [
+          "**/*.parquet"
+        ],
+        "label_globs": [
+          "**/*.parquet"
+        ]
+      }
+    },
+    {
+      "id": "iemocap",
+      "title": "IEMOCAP",
+      "source_url": "https://sail.usc.edu/iemocap/release_form.php",
+      "license": "Academic release form required",
+      "access_type": "academic_email_release_form",
+      "modalities": [
+        "audio",
+        "video",
+        "motion_capture",
+        "transcript",
+        "emotion_labels"
+      ],
+      "splits": [
+        "sessions_1_to_5"
+      ],
+      "target_dir": "data/raw/iemocap",
+      "pipeline_coverage": [
+        "asr",
+        "affect",
+        "benchmark"
+      ],
+      "manual_access": {
+        "next_step": "Submit the USC release form with an academic institute email, accept the license, complete CAPTCHA, then wait for manual verification and login details by email.",
+        "verification_cues": [
+          "Approval email arrives to the academic address.",
+          "Released package includes multimodal assets and approximately 12 hours of data."
+        ]
+      }
+    },
+    {
+      "id": "msp_podcast",
+      "title": "MSP-Podcast",
+      "source_url": "https://ecs.utdallas.edu/research/researchlabs/msp-lab/MSP-Podcast.html",
+      "license": "Academic FDP license required",
+      "access_type": "academic_license_signed_form",
+      "modalities": [
+        "audio",
+        "emotion_labels",
+        "speaker_info",
+        "transcript_metadata"
+      ],
+      "splits": [
+        "train",
+        "development",
+        "test1",
+        "test2",
+        "test3"
+      ],
+      "target_dir": "data/raw/msp_podcast",
+      "pipeline_coverage": [
+        "affect",
+        "benchmark"
+      ],
+      "manual_access": {
+        "next_step": "Have an institution-authorized signer execute the FDP academic license PDF, then email the signed form to Prof. Carlos Busso.",
+        "verification_cues": [
+          "Corpus metadata reports version 1.11.",
+          "Partition layout includes train, development, test1, test2, and test3."
+        ]
+      }
+    },
+    {
+      "id": "msp_conversation",
+      "title": "MSP-Conversation",
+      "source_url": "https://ecs.utdallas.edu/research/researchlabs/msp-lab/MSP-Conversation.html",
+      "license": "Academic FDP license required",
+      "access_type": "academic_license_signed_form",
+      "modalities": [
+        "audio",
+        "continuous_arousal",
+        "continuous_valence",
+        "continuous_dominance"
+      ],
+      "splits": [
+        "release_1_0"
+      ],
+      "target_dir": "data/raw/msp_conversation",
+      "pipeline_coverage": [
+        "affect",
+        "benchmark"
+      ],
+      "manual_access": {
+        "next_step": "Have an institution-authorized signer execute the FDP academic license PDF, then email the signed form to Prof. Carlos Busso.",
+        "verification_cues": [
+          "Release metadata identifies version 1.0.",
+          "Package includes 74 conversations and continuous arousal, valence, and dominance traces."
+        ]
+      }
+    }
+  ]
+}

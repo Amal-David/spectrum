@@ -1,0 +1,11 @@
+{
+  "name": "spectrum-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "dashboard:dev": "pnpm --dir packages/dashboard dev",
+    "dashboard:build": "pnpm --dir packages/dashboard build",
+    "dashboard:start": "pnpm --dir packages/dashboard start",
+    "api:dev": "uv run uvicorn spectrum_api.main:app --reload"
+  }
+}
