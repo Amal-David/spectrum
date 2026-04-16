@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import wave
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from spectrum_api.cli import main as spectrum_cli_main
 from spectrum_pipeline.importers import import_demo_pack
 from spectrum_pipeline.analyzer import analyze_audio_file
 from spectrum_pipeline.benchmarks import benchmark_results
@@ -72,6 +74,25 @@ def test_analyzer_emits_profile_metrics_and_events(tmp_path: Path) -> None:
         timestamps = [sample["timestamp_ms"] for sample in track["samples"]]
         assert timestamps == sorted(timestamps)
         assert all(0 <= timestamp <= round(result.duration_sec * 1000) for timestamp in timestamps)
+
+
+def test_cli_analyze_creates_bundle(monkeypatch: Any, tmp_path: Path) -> None:
+    audio_path = tmp_path / "cli.wav"
+    _write_test_wav(audio_path)
+    opened_urls: list[str] = []
+    job_id = "cli-quickstart-test"
+    run_root = Path("runs") / job_id
+    if run_root.exists():
+        shutil.rmtree(run_root)
+
+    monkeypatch.setattr("spectrum_api.cli.uuid.uuid4", lambda: job_id)
+    monkeypatch.setattr("spectrum_api.cli.webbrowser.open", lambda url: opened_urls.append(url))
+
+    exit_code = spectrum_cli_main(["analyze", str(audio_path), "--dashboard-url", "http://127.0.0.1:3000", "--open"])
+
+    assert exit_code == 0
+    assert (run_root / "bundle.json").exists()
+    assert opened_urls == [f"http://127.0.0.1:3000/sessions/{job_id}"]
 
 
 def test_benchmark_sentence_labels_drive_transcript_affect(tmp_path: Path) -> None:

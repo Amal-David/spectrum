@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-import { compareSessionBundles, formatMetric, loadSessionBundles } from "../../lib/data";
+import { fetchSessionBundles, fetchSessionIndex } from "../../lib/api-client";
+import { formatMetric } from "../../lib/data";
+
+export const dynamic = "force-dynamic";
 
 export default async function ComparePage({
   searchParams
@@ -8,8 +11,9 @@ export default async function ComparePage({
   searchParams: Promise<{ ids?: string }>;
 }) {
   const params = await searchParams;
-  const fallbackBundles = loadSessionBundles().slice(0, 2);
-  const bundles = params.ids ? compareSessionBundles(params.ids.split(",").filter(Boolean)) : fallbackBundles;
+  const requestedIds = params.ids?.split(",").filter(Boolean) ?? [];
+  const fallbackIds = requestedIds.length ? requestedIds : (await fetchSessionIndex()).slice(0, 2).map((row) => row.session_id);
+  const bundles = fallbackIds.length ? await fetchSessionBundles(fallbackIds) : [];
 
   return (
     <main className="analytics-shell compare-shell">
@@ -20,8 +24,11 @@ export default async function ComparePage({
       <section className="analytics-hero detail-hero">
         <div className="hero-copy">
           <span className="eyebrow">Compare</span>
-          <h1>Quality, hesitation, overlap, and friction side by side.</h1>
-          <p>Use this view to inspect how two sessions diverge across quality gates, question behavior, and proxy signal cards.</p>
+          <h1>Review two session bundles side by side.</h1>
+          <p>
+            Compare quality posture, transcript readiness, speaker timing, and evidence-backed behavioral signals without switching
+            away from the bundle model.
+          </p>
         </div>
       </section>
 
@@ -33,6 +40,7 @@ export default async function ComparePage({
                 <div className="badge-row">
                   <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
                   <span className="badge">{bundle.session.analysis_mode}</span>
+                  <span className="badge accent">{bundle.session.readiness_tier ?? "blocked"}</span>
                 </div>
                 <h2>{bundle.session.title}</h2>
                 <p className="sample-meta">
@@ -46,7 +54,7 @@ export default async function ComparePage({
                   </div>
                   <div className="metric-row">
                     <span className="row-label">Noise ratio</span>
-                    <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
+                    <strong>{formatMetric(bundle.quality.noise_ratio)}</strong>
                   </div>
                   <div className="metric-row">
                     <span className="row-label">Questions</span>
@@ -73,7 +81,7 @@ export default async function ComparePage({
               </article>
             ))
           ) : (
-            <div className="empty-state">No comparable sessions yet. Import or bootstrap a few runs first.</div>
+            <div className="empty-state">No comparable sessions yet. Analyze or import a couple of runs first.</div>
           )}
         </div>
       </section>

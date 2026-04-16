@@ -364,7 +364,7 @@ function inferReadinessTier(transcript: string, diarizationState?: StageState | 
   return "blocked";
 }
 
-function normalizeSessionBundle(rawBundle: any): SessionBundle {
+export function normalizeSessionBundle(rawBundle: any): SessionBundle {
   const durationSec = rawBundle?.session?.duration_sec ?? rawBundle?.duration_sec ?? 0;
   const transcript = rawBundle?.content?.transcript ?? rawBundle?.transcript ?? "";
   const diarizationState = rawBundle?.diarization?.readiness_state ?? "missing";

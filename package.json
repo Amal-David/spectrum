@@ -6,6 +6,8 @@
     "dashboard:dev": "pnpm --dir packages/dashboard dev",
     "dashboard:build": "pnpm --dir packages/dashboard build",
     "dashboard:start": "pnpm --dir packages/dashboard start",
-    "api:dev": "uv run uvicorn spectrum_api.main:app --reload"
+    "api:dev": "uv run uvicorn spectrum_api.main:app --reload --port 8000",
+    "demo": "uv run spectrum demo",
+    "dev": "./scripts/dev.sh"
   }
 }
