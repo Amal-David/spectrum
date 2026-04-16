@@ -868,7 +868,11 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                 );
               })
             ) : (
-              <div className="empty-state">No transcript sentences match the current filters.</div>
+              <div className="empty-state">
+                {bundle.content.sentences.length
+                  ? "No transcript sentences match the current filters."
+                  : "Transcript timing or sentence alignment is not available for this session yet. Use the quality and readiness banners above as the source of truth for what is currently trustworthy."}
+              </div>
             )}
           </div>
         </section>

@@ -174,7 +174,14 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
         speakers = speakers_by_session.get(job_id, [])
         events = events_by_session.get(job_id, [])
         questions = questions_by_session.get(job_id, [])
-        profile, profile_display = build_profile("conversation_analytics", metadata, transcript, quality, speakers, ProcessSessionOptions(metadata=metadata))
+        profile, profile_display = build_profile(
+            "conversation_analytics",
+            metadata,
+            transcript,
+            quality,
+            speakers,
+            ProcessSessionOptions(metadata=metadata),
+        )
         content = build_content(transcript, turns, metadata, quality, events, questions)
         environment = build_environment(metadata, quality, events, session_row["duration_ms"] / 1000)
         diarization, diarization_provider = build_diarization(job_id, Path("."), metadata, turns, adapters)
@@ -182,7 +189,17 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
         speakers, turns = apply_speaker_roles(speakers, turns, speaker_roles)
         spectrogram = SpectrogramArtifact(readiness_state="fallback", notes=["synthetic_session_has_no_rendered_spectrogram"])
         prosody_tracks: list[Any] = []
-        nonverbal_cues = build_nonverbal_cues(job_id, metadata, diarization, prosody_tracks, turns, questions, quality)
+        nonverbal_cues = build_nonverbal_cues(
+            job_id,
+            metadata,
+            diarization,
+            prosody_tracks,
+            turns,
+            questions,
+            quality,
+            words=content.words,
+            events=events,
+        )
         timeline_tracks = build_timeline_tracks(diarization, content, turns, questions, nonverbal_cues, events)
         signals = build_signals(quality, speakers, turns, events, questions, content, speaker_roles)
         diagnostics = Diagnostics(

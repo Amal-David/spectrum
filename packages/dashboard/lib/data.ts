@@ -282,7 +282,7 @@ export type CohortSummary = {
 
 export type BenchmarkSnapshot = {
   registry: Array<{ benchmark_id: string; dataset_id: string; title: string; status: string; tasks: Array<{ task_type: string; label: string; metric_keys: string[] }>; notes: string[] }>;
-  results: Array<{ benchmark_id: string; dataset_id: string; task_type: string; status: string; metrics: Array<{ key: string; label: string; value: number; unit?: string | null }>; notes: string[] }>;
+  results: Array<{ benchmark_id: string; dataset_id: string; task_type: string; status: string; regressed?: boolean; metrics: Array<{ key: string; label: string; value: number; unit?: string | null; previous_value?: number | null; delta?: number | null; regressed?: boolean }>; notes: string[] }>;
 };
 
 export type DatasetOverview = {
@@ -313,6 +313,16 @@ export type DashboardSnapshot = {
   alerts: Array<{ session_id: string; title: string; metric: string; value: number; summary: string }>;
 };
 
+export type DashboardFilters = {
+  sourceType?: string;
+  analysisMode?: string;
+  language?: string;
+  durationBand?: string;
+  qualityBand?: string;
+  readinessTier?: string;
+  rolePresence?: string;
+};
+
 function repoRoot() {
   return path.resolve(process.cwd(), "../..");
 }
@@ -332,9 +342,23 @@ function safeReadJson<T>(filePath: string): T | null {
   return readJson<T>(filePath);
 }
 
+function inferReadinessTier(transcript: string, diarizationState?: StageState | null): ReadinessTier {
+  if (diarizationState === "ready" && transcript) {
+    return "full";
+  }
+  if (diarizationState === "fallback" && transcript) {
+    return "partial";
+  }
+  if (transcript) {
+    return "transcript_only";
+  }
+  return "blocked";
+}
+
 function normalizeSessionBundle(rawBundle: any): SessionBundle {
   const durationSec = rawBundle?.session?.duration_sec ?? rawBundle?.duration_sec ?? 0;
   const transcript = rawBundle?.content?.transcript ?? rawBundle?.transcript ?? "";
+  const diarizationState = rawBundle?.diarization?.readiness_state ?? "missing";
   return {
     schema_version: rawBundle?.schema_version ?? "0.1.0",
     session: {
@@ -352,7 +376,7 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       duration_sec: durationSec,
       speaker_count: rawBundle?.session?.speaker_count ?? rawBundle?.speaker_count ?? 0,
       status: rawBundle?.session?.status ?? "completed",
-      readiness_tier: rawBundle?.session?.readiness_tier ?? (transcript ? "transcript_only" : "blocked"),
+      readiness_tier: rawBundle?.session?.readiness_tier ?? inferReadinessTier(transcript, diarizationState),
     },
     source: rawBundle?.source ?? null,
     artifacts: rawBundle?.artifacts ?? {},
@@ -481,7 +505,7 @@ function legacyBundle(jobId: string): SessionBundle | null {
       duration_sec: result.duration_sec,
       speaker_count: result.speaker_count,
       status: "completed",
-      readiness_tier: result.transcript ? "transcript_only" : "blocked"
+      readiness_tier: inferReadinessTier(result.transcript ?? "", "missing")
     },
     source: result.source ?? null,
     artifacts: result.artifacts ?? {},
@@ -665,8 +689,47 @@ export function loadDatasetOverviews(): DatasetOverview[] {
   return overviews.sort((a, b) => a.dataset_id.localeCompare(b.dataset_id));
 }
 
-export function loadDashboardSnapshot(): DashboardSnapshot {
-  const bundles = loadSessionBundles();
+function matchesDashboardFilters(bundle: SessionBundle, filters: DashboardFilters) {
+  if (filters.sourceType && filters.sourceType !== "all" && bundle.session.source_type !== filters.sourceType) {
+    return false;
+  }
+  if (filters.analysisMode && filters.analysisMode !== "all" && bundle.session.analysis_mode !== filters.analysisMode) {
+    return false;
+  }
+  if (filters.language && filters.language !== "all" && (bundle.session.language ?? "unknown") !== filters.language) {
+    return false;
+  }
+  if (filters.durationBand && filters.durationBand !== "all" && durationBand(bundle) !== filters.durationBand) {
+    return false;
+  }
+  if (filters.qualityBand && filters.qualityBand !== "all" && qualityBand(bundle) !== filters.qualityBand) {
+    return false;
+  }
+  if (filters.readinessTier && filters.readinessTier !== "all" && bundle.session.readiness_tier !== filters.readinessTier) {
+    return false;
+  }
+  if (filters.rolePresence && filters.rolePresence !== "all") {
+    const roles = new Set(bundle.speaker_roles.assignments.map((assignment) => assignment.speaker_role));
+    const rolePresence = roles.has("human") && roles.has("ai")
+      ? "human_ai"
+      : roles.has("human")
+        ? "human_only"
+        : roles.has("ai")
+          ? "ai_only"
+          : "unknown";
+    if (rolePresence !== filters.rolePresence) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function filterDashboardBundles(bundles: SessionBundle[], filters: DashboardFilters): SessionBundle[] {
+  return bundles.filter((bundle) => matchesDashboardFilters(bundle, filters));
+}
+
+export function loadDashboardSnapshot(filters: DashboardFilters = {}): DashboardSnapshot {
+  const bundles = filterDashboardBundles(loadSessionBundles(), filters);
   const datasets = loadDatasetOverviews();
   const usableRuns = bundles.filter((bundle) => bundle.quality.is_usable).length;
   const avgSNR = bundles.length
@@ -822,6 +885,7 @@ function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
       { key: "quality_band_mix", label: "Quality band mix", items: countDistribution(bundles.map((bundle) => qualityBand(bundle))) },
       { key: "source_mix", label: "Source mix", items: countDistribution(bundles.map((bundle) => bundle.session.source_type)) },
       { key: "duration_mix", label: "Duration bands", items: countDistribution(bundles.map((bundle) => durationBand(bundle))) },
+      { key: "readiness_mix", label: "Readiness tiers", items: countDistribution(bundles.map((bundle) => bundle.session.readiness_tier ?? "blocked")) },
       {
         key: "dominant_human_emotions",
         label: "Dominant human emotions",
@@ -861,8 +925,11 @@ function buildPhaseSummary(bundles: SessionBundle[], phase: string, startRatio: 
       const turn = turnLookup.get(question.answer_turn_id);
       return turn ? turn.start_ms >= startMs && turn.start_ms < endMs : false;
     });
+    const phaseHesitation = phaseQuestions.length
+      ? phaseQuestions.reduce((sum, question) => sum + question.hesitation_score, 0) / phaseQuestions.length
+      : 0;
     if (phaseQuestions.length) {
-      hesitationValues.push(phaseQuestions.reduce((sum, question) => sum + question.hesitation_score, 0) / phaseQuestions.length);
+      hesitationValues.push(phaseHesitation);
     }
     const phaseEvents = bundle.events.filter((event) => event.begin_ms >= startMs && event.begin_ms < endMs && ["interruption", "noise_spike", "engagement_drop"].includes(event.type));
     frictionValues.push(Math.min(100, phaseEvents.length * 18));
@@ -870,7 +937,7 @@ function buildPhaseSummary(bundles: SessionBundle[], phase: string, startRatio: 
     if (humanSpeaker) {
       rapportValues.push(Math.max(10, 100 - Math.abs((humanSpeaker.talk_ratio - 0.5) * 140)));
     }
-    frustrationValues.push(Math.min(100, (frictionValues.at(-1) ?? 0) * 0.65 + (hesitationValues.at(-1) ?? 0) * 0.35));
+    frustrationValues.push(Math.min(100, (frictionValues.at(-1) ?? 0) * 0.65 + phaseHesitation * 0.35));
   }
   return {
     phase,
@@ -889,6 +956,8 @@ function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
     { benchmark_id: "iemocap", dataset_id: "iemocap", title: "IEMOCAP", status: "gated", tasks: [{ task_type: "utterance_emotion", label: "Utterance emotion", metric_keys: ["macro_f1"] }], notes: ["Run when licensed data is present locally."] },
     { benchmark_id: "msp_podcast", dataset_id: "msp_podcast", title: "MSP-Podcast", status: "gated", tasks: [{ task_type: "utterance_emotion", label: "Utterance emotion", metric_keys: ["macro_f1"] }, { task_type: "sentiment", label: "Sentiment", metric_keys: ["accuracy"] }], notes: ["Run when licensed data is present locally."] },
     { benchmark_id: "ami_corpus", dataset_id: "ami_corpus", title: "AMI Corpus", status: "ready", tasks: [{ task_type: "diarization_overlap", label: "Diarization + overlap", metric_keys: ["der"] }, { task_type: "nonverbal_cue_tagging", label: "Non-verbal cue tagging", metric_keys: ["precision", "recall", "f1"] }], notes: ["Cue timing and overlap validation."] },
+    { benchmark_id: "voxconverse", dataset_id: "voxconverse", title: "VoxConverse", status: "ready", tasks: [{ task_type: "diarization_overlap", label: "Diarization + overlap", metric_keys: ["der"] }], notes: ["Open diarization benchmark coverage."] },
+    { benchmark_id: "podcast_fillers_processed", dataset_id: "podcast_fillers_processed", title: "Podcast Fillers", status: "ready", tasks: [{ task_type: "nonverbal_cue_tagging", label: "Non-verbal cue tagging", metric_keys: ["precision", "recall", "f1"] }], notes: ["Filler and hesitation proxy coverage."] },
   ];
   const results = registry.flatMap((entry) => {
     const matched = bundles.filter((bundle) => bundle.session.dataset_id === entry.dataset_id);
@@ -910,7 +979,7 @@ function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
       } else if (hasData && task.task_type === "diarization_overlap") {
         const segments = matched.reduce((sum, bundle) => sum + bundle.diarization.segments.length, 0);
         const overlaps = matched.reduce((sum, bundle) => sum + bundle.diarization.overlap_windows.length, 0);
-        metrics = [{ key: "der", label: "DER", value: Math.max(0, 1 - overlaps / Math.max(1, segments + overlaps)) }];
+        metrics = [{ key: "der", label: "DER", value: overlaps / Math.max(1, segments + overlaps) }];
       } else if (hasData && task.task_type === "nonverbal_cue_tagging") {
         const cues = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.length, 0);
         const visible = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.filter((cue) => cue.display_state !== "hidden").length, 0);
@@ -922,6 +991,7 @@ function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
         dataset_id: entry.dataset_id,
         task_type: task.task_type,
         status: hasData ? "ready" : entry.status === "gated" ? "skipped" : "missing",
+        regressed: false,
         metrics,
         notes: hasData ? entry.notes : [...entry.notes, "No imported benchmark-backed sessions are available yet."],
       };

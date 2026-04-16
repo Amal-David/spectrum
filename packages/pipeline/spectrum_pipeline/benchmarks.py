@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from spectrum_core.constants import RUNS_DIR
 from spectrum_core.datasets import list_dataset_records
 from spectrum_core.models import (
     BenchmarkMetricResult,
@@ -11,6 +13,9 @@ from spectrum_core.models import (
     BenchmarkTaskDefinition,
     SessionBundle,
 )
+
+SNAPSHOT_ROOT = RUNS_DIR / "benchmarks"
+LATEST_SNAPSHOT_PATH = SNAPSHOT_ROOT / "latest.json"
 
 BENCHMARK_TASKS: dict[str, list[BenchmarkTaskDefinition]] = {
     "meld": [
@@ -32,6 +37,12 @@ BENCHMARK_TASKS: dict[str, list[BenchmarkTaskDefinition]] = {
         BenchmarkTaskDefinition(task_type="diarization_overlap", label="Diarization + overlap", metric_keys=["der"]),
         BenchmarkTaskDefinition(task_type="nonverbal_cue_tagging", label="Non-verbal cue tagging", metric_keys=["precision", "recall", "f1"]),
     ],
+    "voxconverse": [
+        BenchmarkTaskDefinition(task_type="diarization_overlap", label="Diarization + overlap", metric_keys=["der"]),
+    ],
+    "podcast_fillers_processed": [
+        BenchmarkTaskDefinition(task_type="nonverbal_cue_tagging", label="Non-verbal cue tagging", metric_keys=["precision", "recall", "f1"]),
+    ],
 }
 
 
@@ -47,6 +58,10 @@ def benchmark_registry() -> list[BenchmarkRegistryEntry]:
             notes.append("Evaluation activates only when the licensed dataset is present locally.")
         if dataset_id == "ami_corpus":
             notes.append("Use AMI for cue timing, diarization overlap, and laughter-tag sanity checks.")
+        if dataset_id == "voxconverse":
+            notes.append("Use VoxConverse for diarization behavior on multi-speaker open audio.")
+        if dataset_id == "podcast_fillers_processed":
+            notes.append("Use podcast fillers for hesitation, filler, and backchannel proxy coverage.")
         entries.append(
             BenchmarkRegistryEntry(
                 benchmark_id=dataset_id,
@@ -60,13 +75,37 @@ def benchmark_registry() -> list[BenchmarkRegistryEntry]:
     return entries
 
 
-def benchmark_results(bundles: list[SessionBundle]) -> list[BenchmarkResult]:
+def _metric_lookup(results: list[BenchmarkResult] | None) -> dict[tuple[str, str], BenchmarkMetricResult]:
+    lookup: dict[tuple[str, str], BenchmarkMetricResult] = {}
+    for result in results or []:
+        for metric in result.metrics:
+            lookup[(result.benchmark_id, metric.key)] = metric
+    return lookup
+
+
+def _lower_is_better(metric_key: str) -> bool:
+    return metric_key in {"der", "wer"}
+
+
+def _compare_metric(metric: BenchmarkMetricResult, previous: BenchmarkMetricResult | None) -> BenchmarkMetricResult:
+    if previous is None:
+        return metric
+    delta = round(metric.value - previous.value, 4)
+    regressed = delta > 0.02 if _lower_is_better(metric.key) else delta < -0.02
+    return metric.model_copy(update={"previous_value": previous.value, "delta": delta, "regressed": regressed})
+
+
+def benchmark_results(
+    bundles: list[SessionBundle],
+    previous_results: list[BenchmarkResult] | None = None,
+) -> list[BenchmarkResult]:
     by_dataset: dict[str, list[SessionBundle]] = {}
     for bundle in bundles:
         if bundle.session.dataset_id:
             by_dataset.setdefault(bundle.session.dataset_id, []).append(bundle)
     results: list[BenchmarkResult] = []
     now = datetime.now(tz=UTC).isoformat()
+    previous_lookup = _metric_lookup(previous_results)
     for entry in benchmark_registry():
         dataset_bundles = by_dataset.get(entry.dataset_id, [])
         stack = sorted({decision.provider_key for bundle in dataset_bundles for decision in bundle.diagnostics.provider_decisions})
@@ -99,7 +138,7 @@ def benchmark_results(bundles: list[SessionBundle]) -> list[BenchmarkResult]:
                 elif task.task_type == "diarization_overlap":
                     overlap_count = sum(len(bundle.diarization.overlap_windows) for bundle in dataset_bundles)
                     segment_count = sum(len(bundle.diarization.segments) for bundle in dataset_bundles)
-                    value = round(max(0.0, 1 - (overlap_count / max(1, segment_count + overlap_count))), 3)
+                    value = round(overlap_count / max(1, segment_count + overlap_count), 3)
                     metrics.append(BenchmarkMetricResult(key="der", label="DER", value=value))
                 elif task.task_type == "nonverbal_cue_tagging":
                     cue_count = sum(len(bundle.nonverbal_cues) for bundle in dataset_bundles)
@@ -115,9 +154,14 @@ def benchmark_results(bundles: list[SessionBundle]) -> list[BenchmarkResult]:
             else:
                 status = "skipped" if entry.status == "gated" else "missing"
                 notes.append("No imported benchmark-backed sessions are available for this dataset yet.")
+            benchmark_id = f"{entry.dataset_id}:{task.task_type}"
+            metrics = [_compare_metric(metric, previous_lookup.get((benchmark_id, metric.key))) for metric in metrics]
+            regressed = any(metric.regressed for metric in metrics)
+            if regressed:
+                notes.append("Current snapshot regressed against the previous saved benchmark run.")
             results.append(
                 BenchmarkResult(
-                    benchmark_id=f"{entry.dataset_id}:{task.task_type}",
+                    benchmark_id=benchmark_id,
                     dataset_id=entry.dataset_id,
                     task_type=task.task_type,
                     split="default",
@@ -125,7 +169,41 @@ def benchmark_results(bundles: list[SessionBundle]) -> list[BenchmarkResult]:
                     metrics=metrics,
                     run_timestamp=now if dataset_bundles else None,
                     model_stack=stack,
+                    regressed=regressed,
                     notes=notes,
                 )
             )
     return results
+
+
+def load_benchmark_snapshot(snapshot_path: Path = LATEST_SNAPSHOT_PATH) -> dict[str, object] | None:
+    if not snapshot_path.exists():
+        return None
+    try:
+        return json.loads(snapshot_path.read_text())
+    except json.JSONDecodeError:
+        return None
+
+
+def benchmark_snapshot_payload(
+    bundles: list[SessionBundle],
+    *,
+    previous_results: list[BenchmarkResult] | None = None,
+) -> dict[str, object]:
+    registry = benchmark_registry()
+    results = benchmark_results(bundles, previous_results=previous_results)
+    return {
+        "registry": [entry.model_dump(mode="json") for entry in registry],
+        "results": [result.model_dump(mode="json") for result in results],
+    }
+
+
+def save_benchmark_snapshot(payload: dict[str, object], snapshot_root: Path = SNAPSHOT_ROOT) -> tuple[Path, Path]:
+    snapshot_root.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    versioned_path = snapshot_root / f"{timestamp}.json"
+    latest_path = snapshot_root / "latest.json"
+    encoded = json.dumps(payload, indent=2) + "\n"
+    versioned_path.write_text(encoded)
+    latest_path.write_text(encoded)
+    return versioned_path, latest_path

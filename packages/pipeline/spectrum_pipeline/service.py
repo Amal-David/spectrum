@@ -67,7 +67,11 @@ from spectrum_core.models import (
     WordTimestamp,
 )
 from spectrum_core.registry import build_adapter_inventory
+from .diarization_provider import diarize_with_pyannote, load_diarization_cache, save_diarization_cache
+from .nonverbal_provider import detect_energy_vocal_cues, detect_textual_vocal_cues
 from .openai_provider import analyze_conversation_with_openai, openai_enabled, transcribe_audio_with_openai
+from .profile_provider import infer_accent_broad_signal, infer_age_signal, infer_voice_presentation_signal
+from .transcription_provider import load_transcription_cache, normalize_word_records, save_transcription_cache, transcribe_with_faster_whisper
 
 DB_PATH = RUNS_DIR / "spectrum.sqlite3"
 FILLER_PATTERN = re.compile(r"\b(uh|um|ah|hmm|erm|like)\b", re.IGNORECASE)
@@ -172,18 +176,7 @@ def _upload_provider_preference(metadata: dict[str, Any]) -> str:
 
 
 def _normalize_provider_words(words: list[dict[str, Any]], *, source: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "word": str(word.get("word") or ""),
-            "start_ms": int(word.get("start_ms", word.get("start", 0))),
-            "end_ms": int(word.get("end_ms", word.get("end", 0))),
-            "confidence": float(word.get("confidence", 0.0)),
-            "source": source,
-            "speaker_id": word.get("speaker_id"),
-        }
-        for word in words
-        if str(word.get("word") or "").strip()
-    ]
+    return normalize_word_records(words, source=source)
 
 
 def _readiness_tier(transcript: str, diarization: DiarizationSummary) -> ReadinessTier:
@@ -1173,7 +1166,7 @@ def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[A
         if pyannote and pyannote.available and not pyannote.token_present:
             notes.append("pyannote_token_missing")
         elif not pyannote or not pyannote.available:
-            notes.append("pyannote_unavailable")
+            notes.append("pyannote_missing")
         return [], [], ProviderDecision(
             kind="diarization",
             provider_key="pyannote",
@@ -1182,9 +1175,13 @@ def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[A
             status="blocked",
             notes=notes,
         )
-    cached = _load_provider_cache(job_id, "diarization")
-    if cached and cached.get("provider_key") == "pyannote":
-        segments = [DiarizationSegment.model_validate(item) for item in cached.get("segments", [])]
+    cache_path = _provider_cache_path(job_id, "diarization")
+    cached_segments = load_diarization_cache(cache_path)
+    if cached_segments:
+        segments = [
+            segment.model_copy(update={"segment_id": segment.segment_id or f"{job_id}-pyannote-cache-{index}"})
+            for index, segment in enumerate(cached_segments)
+        ]
         return segments, [], ProviderDecision(
             kind="diarization",
             provider_key="pyannote",
@@ -1193,33 +1190,13 @@ def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[A
             status="ready" if segments else "fallback",
             notes=["diarization_cache_reused"] if segments else [],
         )
-    try:  # pragma: no cover - optional runtime path
-        from pyannote.audio import Pipeline  # type: ignore
-
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
-        pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=token)
-        diarization = pipeline(str(audio_path))
-        segments: list[DiarizationSegment] = []
-        for index, (window, _track, speaker) in enumerate(diarization.itertracks(yield_label=True)):
-            start_ms = int(window.start * 1000)
-            end_ms = int(window.end * 1000)
-            segments.append(
-                DiarizationSegment(
-                    segment_id=f"{job_id}-pyannote-{index}",
-                    speaker_id=str(speaker),
-                    start_ms=start_ms,
-                    end_ms=end_ms,
-                    confidence=0.81,
-                    source="model",
-                    display_state="visible",
-                    label=str(speaker),
-                )
-            )
-        _save_provider_cache(
-            job_id,
-            "diarization",
-            {"provider_key": "pyannote", "segments": [segment.model_dump(mode="json") for segment in segments]},
-        )
+    segments, notes = diarize_with_pyannote(audio_path)
+    if segments:
+        segments = [
+            segment.model_copy(update={"segment_id": f"{job_id}-pyannote-{index}"})
+            for index, segment in enumerate(segments)
+        ]
+        save_diarization_cache(cache_path, segments)
         return segments, [], ProviderDecision(
             kind="diarization",
             provider_key="pyannote",
@@ -1228,16 +1205,14 @@ def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[A
             status="ready" if segments else "fallback",
             notes=[],
         )
-    except Exception as error:  # pragma: no cover - optional runtime path
-        failure = f"pyannote_failed:{error.__class__.__name__}"
-        return [], [failure], ProviderDecision(
-            kind="diarization",
-            provider_key="pyannote",
-            used=False,
-            cached=False,
-            status="fallback",
-            notes=[failure],
-        )
+    return [], notes, ProviderDecision(
+        kind="diarization",
+        provider_key="pyannote",
+        used=False,
+        cached=False,
+        status="fallback" if notes else "blocked",
+        notes=notes or ["pyannote_missing"],
+    )
 
 
 def build_diarization(
@@ -1637,8 +1612,12 @@ def build_nonverbal_cues(
     turns: list[TurnModel],
     questions: list[QuestionAnalyticsRow],
     quality: QualitySummary,
+    words: list[WordTimestamp] | None = None,
+    events: list[EventModel] | None = None,
 ) -> list[NonverbalCue]:
     cues: list[NonverbalCue] = []
+    words = words or []
+    events = events or []
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     strong_diarization = diarization.readiness_state == "ready"
 
@@ -1720,6 +1699,49 @@ def build_nonverbal_cues(
                 )
                 last_energy_spike_ms = current.timestamp_ms
 
+    cues.extend(
+        detect_textual_vocal_cues(
+            job_id=job_id,
+            turns=turns,
+            words=words,
+            diarization=diarization,
+            strong_diarization=strong_diarization,
+            source_type=source_type,
+        )
+    )
+    cues.extend(
+        detect_energy_vocal_cues(
+            job_id=job_id,
+            prosody_tracks=prosody_tracks,
+            words=words,
+            diarization=diarization,
+            strong_diarization=strong_diarization,
+            quality=quality,
+            source_type=source_type,
+        )
+    )
+
+    for event in events:
+        if event.type != "backchannel":
+            continue
+        speaker_id = event.speaker_ids[0] if strong_diarization and event.speaker_ids else None
+        cues.append(
+            NonverbalCue(
+                cue_id=f"{job_id}-event-{event.event_id}",
+                type="backchannel",
+                family="conversational",
+                label=event.label or "backchannel",
+                start_ms=event.begin_ms,
+                end_ms=event.end_ms,
+                confidence=max(0.45, event.confidence or 0.58),
+                source="heuristic",
+                display_state="visible" if strong_diarization or source_type != "direct_audio_file" else "muted",
+                speaker_id=speaker_id,
+                evidence_refs=list(event.evidence_refs),
+                explainability_mask=["event_backchannel"],
+            )
+        )
+
     answer_turns = {turn.turn_id: turn for turn in turns}
     for question in questions:
         if question.hesitation_score < 55:
@@ -1751,7 +1773,7 @@ def build_nonverbal_cues(
     if source_type == "direct_audio_file" and not strong_diarization:
         for cue in cues:
             if cue.family == "vocal_sound":
-                cue.display_state = "hidden"
+                cue.display_state = "muted"
                 cue.speaker_id = None
                 cue.explainability_mask = sorted(set(cue.explainability_mask + ["speaker_attribution_blocked"]))
 
@@ -1959,8 +1981,8 @@ def naive_lang_mix(transcript: str, language_hint: str | None = None) -> LangMix
 
 
 def maybe_transcribe(job_id: str, audio_path: Path, transcript_hint: str | None = None) -> TranscriptionOutcome:
-    warnings: list[str] = []
-    cached = _load_provider_cache(job_id, "transcription")
+    cache_path = _provider_cache_path(job_id, "transcription")
+    cached = load_transcription_cache(cache_path)
     if cached and cached.get("provider_key") == "faster_whisper":
         words = _normalize_provider_words(list(cached.get("words", [])), source="model")
         transcript = str(cached.get("transcript") or "")
@@ -1977,82 +1999,59 @@ def maybe_transcribe(job_id: str, audio_path: Path, transcript_hint: str | None 
                 notes=["transcription_cache_reused"],
             ),
         )
-    try:
-        from faster_whisper import WhisperModel  # type: ignore
-    except ImportError:
+
+    model_name = os.environ.get("SPECTRUM_WHISPER_MODEL", "tiny")
+    transcript, words, warnings = transcribe_with_faster_whisper(audio_path, model_name=model_name)
+    if transcript:
+        save_transcription_cache(
+            cache_path,
+            {
+                "provider_key": "faster_whisper",
+                "model": model_name,
+                "transcript": transcript,
+                "words": words,
+            },
+        )
+        return TranscriptionOutcome(
+            transcript=transcript,
+            words=words,
+            warnings=warnings,
+            provider=ProviderDecision(
+                kind="transcription",
+                provider_key="faster_whisper",
+                used=True,
+                cached=False,
+                status="ready",
+                notes=[],
+            ),
+        )
+
+    if "asr_model_unavailable" in warnings:
         if transcript_hint:
             return TranscriptionOutcome(
                 transcript=transcript_hint,
-                warnings=["transcript_hint_used", "faster_whisper_unavailable"],
+                warnings=["transcript_hint_used", *warnings],
                 provider=ProviderDecision(
                     kind="transcription",
                     provider_key="transcript_hint",
                     used=True,
                     cached=False,
                     status="fallback",
-                    notes=["transcript_hint_used", "faster_whisper_unavailable"],
+                    notes=["transcript_hint_used", *warnings],
                 ),
             )
         return TranscriptionOutcome(
             transcript="",
-            warnings=["faster_whisper_unavailable"],
+            warnings=warnings,
             provider=ProviderDecision(
                 kind="transcription",
                 provider_key="faster_whisper",
                 used=False,
                 cached=False,
                 status="blocked",
-                notes=["faster_whisper_unavailable"],
+                notes=warnings,
             ),
         )
-
-    try:
-        model_name = os.environ.get("SPECTRUM_WHISPER_MODEL", "tiny")
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segments, _ = model.transcribe(str(audio_path), vad_filter=True, word_timestamps=True)
-        segment_list = list(segments)
-        transcript = " ".join(segment.text.strip() for segment in segment_list if segment.text.strip())
-        words: list[dict[str, Any]] = []
-        for segment in segment_list:
-            for word in list(getattr(segment, "words", []) or []):
-                text = str(getattr(word, "word", "") or "").strip()
-                if not text:
-                    continue
-                words.append(
-                    {
-                        "word": text,
-                        "start_ms": int(float(getattr(word, "start", 0.0)) * 1000),
-                        "end_ms": int(float(getattr(word, "end", 0.0)) * 1000),
-                        "confidence": float(getattr(word, "probability", getattr(word, "confidence", 0.0)) or 0.0),
-                        "source": "model",
-                    }
-                )
-        if transcript:
-            _save_provider_cache(
-                job_id,
-                "transcription",
-                {
-                    "provider_key": "faster_whisper",
-                    "model": model_name,
-                    "transcript": transcript,
-                    "words": words,
-                },
-            )
-            return TranscriptionOutcome(
-                transcript=transcript,
-                words=words,
-                warnings=warnings,
-                provider=ProviderDecision(
-                    kind="transcription",
-                    provider_key="faster_whisper",
-                    used=True,
-                    cached=False,
-                    status="ready",
-                    notes=[],
-                ),
-            )
-    except Exception as error:  # pragma: no cover
-        warnings.append(f"faster_whisper_failed:{error.__class__.__name__}")
 
     if transcript_hint:
         warnings.append("transcript_hint_used")
@@ -2068,7 +2067,7 @@ def maybe_transcribe(job_id: str, audio_path: Path, transcript_hint: str | None 
                 notes=list(warnings),
             ),
         )
-    warnings = warnings or ["faster_whisper_available_but_empty"]
+    warnings = warnings or ["asr_empty_output"]
     return TranscriptionOutcome(
         transcript="",
         words=[],
@@ -2378,51 +2377,67 @@ def build_profile(
     quality: QualitySummary,
     speakers: list[SpeakerSummary],
     options: ProcessSessionOptions,
+    *,
+    audio_path: Path | None = None,
+    adapters: list[Any] | None = None,
 ) -> tuple[ProfileSummary, list[ProfileField]]:
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     dataset_id = str(metadata.get("dataset_id") or "")
     trusted_metadata = source_type in {"demo_pack_zip", "materialized_audio_dataset"} or dataset_id in {"ravdess_speech_16k", "meld"}
-    accent_broad = hint_prediction(metadata.get("accent_broad_hint"), 0.62, "metadata_hint_not_model_inference")
-    accent_fine = hint_prediction(metadata.get("accent_fine_hint"), 0.58, "metadata_hint_not_model_inference")
-    if accent_broad.label != "indian":
-        accent_fine = finalize_label_prediction(
-            LabelPrediction(),
-            warning_flags=["skipped_without_indian_broad_accent"],
-            summary="Fine accent stays hidden until a trustworthy Indian broad-accent signal exists.",
-        )
-    if analysis_mode not in {"voice_profile", "full"}:
-        accent_fine = finalize_label_prediction(
-            LabelPrediction(),
-            warning_flags=["conversation_mode_default"],
-            summary="Fine accent remains unavailable in conversation-only mode without a dedicated accent adapter.",
-        )
+    adapters = adapters or build_adapter_inventory()
+    accent_signal = infer_accent_broad_signal(audio_path or Path("."), metadata, trusted_metadata=trusted_metadata, adapters=adapters)
+    accent_broad = finalize_label_prediction(
+        LabelPrediction(
+            label=accent_signal["label"],
+            confidence=float(accent_signal["confidence"]),
+            source=accent_signal["source"],
+            summary=accent_signal["summary"],
+            warning_flags=list(accent_signal["warning_flags"]),
+        ),
+        confidence=float(accent_signal["confidence"]),
+        source=accent_signal["source"],
+        summary=accent_signal["summary"],
+        warning_flags=list(accent_signal["warning_flags"]),
+    )
+    accent_fine = finalize_label_prediction(
+        hint_prediction(metadata.get("accent_fine_hint"), 0.42, "metadata_hint_not_model_inference")
+        if metadata.get("accent_fine_hint") and accent_broad.label == "indian" and analysis_mode in {"voice_profile", "full"}
+        else LabelPrediction(),
+        confidence=0.42 if metadata.get("accent_fine_hint") and accent_broad.label == "indian" else 0.0,
+        source="metadata_hint" if metadata.get("accent_fine_hint") and accent_broad.label == "indian" else "unavailable",
+        summary="Fine accent stays internal until a dedicated benchmarked model path is wired for production.",
+        warning_flags=["internal_only_fine_accent"] if accent_broad.label == "indian" else ["global_english_production_mode"],
+    )
+    accent_fine.display_state = "hidden"
 
     dominant_speaker = speakers[0].speaker_id if speakers else None
     speaker_hints = metadata.get("speaker_hints", {})
     dominant_hints = speaker_hints.get(dominant_speaker or "", {})
     if not dominant_hints and speaker_hints:
         dominant_hints = next(iter(speaker_hints.values()))
-    voice_hint = metadata.get("voice_presentation_hint") or dominant_hints.get("voice_presentation")
-    age_hint = metadata.get("age_hint") or dominant_hints.get("age")
-
-    voice_presentation = hint_prediction(voice_hint, 0.63 if voice_hint and trusted_metadata else 0.0, "metadata_hint_not_model_inference")
-    if voice_hint and not trusted_metadata:
-        voice_presentation = finalize_label_prediction(
-            voice_presentation,
-            confidence=0.38,
-            summary="Voice presentation hint is not trusted enough to show by default for ad hoc uploads.",
-        )
-    age_band = derive_age_band(float(age_hint), confidence=0.61) if age_hint is not None else LabelPrediction()
-    if age_hint is not None:
-        age_band = finalize_label_prediction(
-            age_band,
-            source="metadata_hint" if trusted_metadata else "heuristic",
-            confidence=0.61 if trusted_metadata else 0.34,
-            summary="Age is surfaced only as a confidence-gated age band.",
-            warning_flags=["metadata_hint_not_model_inference"],
-        )
-    else:
-        age_band = finalize_label_prediction(age_band, summary="No benchmark or prototype age signal was available for this session.")
+    voice_signal = infer_voice_presentation_signal({**metadata, "speaker_hints": speaker_hints}, trusted_metadata=trusted_metadata)
+    voice_presentation = finalize_label_prediction(
+        LabelPrediction(
+            label=str(voice_signal["label"]),
+            confidence=float(voice_signal["confidence"]),
+            source=voice_signal["source"],
+            summary=voice_signal["summary"],
+            warning_flags=list(voice_signal["warning_flags"]),
+        ),
+        confidence=float(voice_signal["confidence"]),
+        source=voice_signal["source"],
+        summary=voice_signal["summary"],
+        warning_flags=list(voice_signal["warning_flags"]),
+    )
+    age_signal = infer_age_signal({**metadata, "speaker_hints": speaker_hints}, trusted_metadata=trusted_metadata)
+    age_band = derive_age_band(age_signal["age"], confidence=float(age_signal["confidence"])) if age_signal["age"] is not None else LabelPrediction()
+    age_band = finalize_label_prediction(
+        age_band,
+        source=age_signal["source"],
+        confidence=float(age_signal["confidence"]),
+        summary=age_signal["summary"],
+        warning_flags=list(age_signal["warning_flags"]),
+    )
 
     if not options.prototype_noncommercial and source_type == "direct_audio_file":
         if voice_presentation.label != "unknown":
@@ -2444,13 +2459,13 @@ def build_profile(
         accent_broad,
         confidence=accent_broad.confidence,
         source=accent_broad.source,
-        summary=accent_broad.summary or "Broad accent falls back to trusted metadata until a model-backed adapter is wired.",
+        summary=accent_broad.summary or "Broad accent uses the strongest available benchmark, metadata, or configured model signal.",
     )
     accent_fine = finalize_label_prediction(
         accent_fine,
         confidence=accent_fine.confidence,
         source=accent_fine.source,
-        summary=accent_fine.summary or "Fine accent stays unavailable until the ECAPA checkpoint or benchmark metadata is present.",
+        summary=accent_fine.summary or "Fine accent stays hidden in Global English production mode.",
     )
     voice_presentation = finalize_label_prediction(
         voice_presentation,
@@ -3373,12 +3388,12 @@ def create_session_result(
                     else []
                 ),
                 *(
-                    ["quality_low_snr"]
+                    ["low_snr"]
                     if quality.avg_snr_db is not None and quality.avg_snr_db < 10
                     else []
                 ),
                 *(
-                    ["quality_high_noise_ratio"]
+                    ["high_noise_ratio"]
                     if quality.noise_ratio > 0.35
                     else []
                 ),
@@ -3398,7 +3413,16 @@ def create_session_result(
     if options.prototype_noncommercial:
         diagnostics.license_warnings.append("Prototype-only age/voice presentation path is enabled. Do not ship non-commercial outputs without legal review.")
 
-    profile, profile_display = build_profile(analysis_mode, metadata, transcript, quality, speakers, options)
+    profile, profile_display = build_profile(
+        analysis_mode,
+        metadata,
+        transcript,
+        quality,
+        speakers,
+        options,
+        audio_path=normalized_path,
+        adapters=adapters,
+    )
     if progress:
         progress("content", JOB_STAGE_BY_KEY["content"]["label"])
     environment = build_environment(metadata, quality, events, duration_sec)
@@ -3413,7 +3437,17 @@ def create_session_result(
     content = build_content(transcript, turns, metadata, quality, events, questions)
     if progress:
         progress("nonverbal_cues", JOB_STAGE_BY_KEY["nonverbal_cues"]["label"])
-    nonverbal_cues = build_nonverbal_cues(job_id, metadata, diarization, prosody_tracks, turns, questions, quality)
+    nonverbal_cues = build_nonverbal_cues(
+        job_id,
+        metadata,
+        diarization,
+        prosody_tracks,
+        turns,
+        questions,
+        quality,
+        words=content.words,
+        events=events,
+    )
     metrics = build_metrics(duration_sec, transcript, quality, speakers, turns, events, questions, speaker_roles)
     source = DatasetReference(
         dataset_id=metadata.get("dataset_id"),
@@ -3540,12 +3574,21 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
     metadata = metadata or {}
     speaker_roles = build_speaker_role_summary(result.speakers, result.turns, metadata)
     speakers, turns = apply_speaker_roles(list(result.speakers), list(result.turns), speaker_roles)
-    _profile, profile_display = build_profile(result.analysis_mode, metadata, result.transcript, result.quality, speakers, ProcessSessionOptions(metadata=metadata))
+    adapters = result.diagnostics.adapters
+    normalized_path = Path(result.artifacts.normalized_audio_path) if result.artifacts.normalized_audio_path else None
+    _profile, profile_display = build_profile(
+        result.analysis_mode,
+        metadata,
+        result.transcript,
+        result.quality,
+        speakers,
+        ProcessSessionOptions(metadata=metadata),
+        audio_path=normalized_path,
+        adapters=adapters,
+    )
     environment = build_environment(metadata, result.quality, result.events, result.duration_sec)
     questions = build_questions(result.job_id, turns, result.events, result.quality, environment, metadata, speaker_roles)
     content = build_content(result.transcript, turns, metadata, result.quality, result.events, questions)
-    adapters = result.diagnostics.adapters
-    normalized_path = Path(result.artifacts.normalized_audio_path) if result.artifacts.normalized_audio_path else None
     diarization, diarization_provider = (
         build_diarization(result.job_id, normalized_path or Path(result.artifacts.original_audio_path or ""), metadata, turns, adapters)
         if normalized_path or result.artifacts.original_audio_path
@@ -3563,7 +3606,17 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         height=360,
     )
     prosody_tracks = build_prosody_tracks(normalized_path, turns, result.duration_sec) if normalized_path and normalized_path.exists() else []
-    nonverbal_cues = build_nonverbal_cues(result.job_id, metadata, diarization, prosody_tracks, turns, questions, result.quality)
+    nonverbal_cues = build_nonverbal_cues(
+        result.job_id,
+        metadata,
+        diarization,
+        prosody_tracks,
+        turns,
+        questions,
+        result.quality,
+        words=content.words,
+        events=result.events,
+    )
     metrics = build_metrics(result.duration_sec, result.transcript, result.quality, speakers, turns, result.events, questions, speaker_roles)
     signals = build_signals(result.quality, speakers, turns, result.events, questions, content, speaker_roles)
     timeline_tracks = build_timeline_tracks(diarization, content, turns, questions, nonverbal_cues, result.events)
@@ -3678,6 +3731,7 @@ def _build_word_timestamps(turns: list[TurnModel], transcript: str, metadata: di
                 end_ms=int(word.get("end_ms", 0)),
                 confidence=float(word.get("confidence", 0.0)),
                 source=str(word.get("source") or "model"),
+                speaker_id=str(word.get("speaker_id")) if word.get("speaker_id") else None,
             )
             for word in provider_words
             if str(word.get("word") or "").strip()
@@ -3695,7 +3749,16 @@ def _build_word_timestamps(turns: list[TurnModel], transcript: str, metadata: di
             for index, token in enumerate(tokens):
                 word_start = int(turn.start_ms + index * step)
                 word_end = int(turn.start_ms + (index + 1) * step)
-                words.append(WordTimestamp(word=token, start_ms=word_start, end_ms=word_end, confidence=turn.confidence, source=turn.source or "heuristic"))
+                words.append(
+                    WordTimestamp(
+                        word=token,
+                        start_ms=word_start,
+                        end_ms=word_end,
+                        confidence=turn.confidence,
+                        source=turn.source or "heuristic",
+                        speaker_id=turn.speaker_id,
+                    )
+                )
         return words
     tokens = [token for token in re.split(r"\s+", transcript.strip()) if token]
     if not tokens:

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatMetric, formatPct, loadDashboardSnapshot } from "../lib/data";
+import { formatMetric, formatPct, loadDashboardSnapshot, loadSessionBundles } from "../lib/data";
 import { AnalyzeAudioPanel } from "./components/analyze-audio-panel";
 
 function stageCoverageLabel(readyCount: number, total: number) {
@@ -8,13 +8,35 @@ function stageCoverageLabel(readyCount: number, total: number) {
   return `${readyCount}/${total} sessions`;
 }
 
-export default function HomePage() {
-  const snapshot = loadDashboardSnapshot();
+function singleParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function HomePage({ searchParams }: PageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const filters = {
+    sourceType: singleParam(resolvedSearchParams.source_type) ?? "all",
+    analysisMode: singleParam(resolvedSearchParams.analysis_mode) ?? "all",
+    language: singleParam(resolvedSearchParams.language) ?? "all",
+    durationBand: singleParam(resolvedSearchParams.duration_band) ?? "all",
+    qualityBand: singleParam(resolvedSearchParams.quality_band) ?? "all",
+    readinessTier: singleParam(resolvedSearchParams.readiness_tier) ?? "all",
+    rolePresence: singleParam(resolvedSearchParams.role_presence) ?? "all",
+  };
+  const allBundles = loadSessionBundles();
+  const snapshot = loadDashboardSnapshot(filters);
   const { bundles, datasets, totals, cohorts, benchmarks } = snapshot;
   const defaultCompareIds = bundles.slice(0, 2).map((bundle) => bundle.session.session_id).join(",");
   const cleanRuns = bundles.filter((bundle) => bundle.quality.noise_ratio < 0.2).length;
   const watchRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.2 && bundle.quality.noise_ratio < 0.35).length;
   const riskyRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.35).length;
+  const sourceOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.source_type))).sort();
+  const languageOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.language ?? "unknown"))).sort();
+  const analysisOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.analysis_mode))).sort();
 
   return (
     <main className="analytics-shell">
@@ -66,15 +88,73 @@ export default function HomePage() {
             <span className="eyebrow muted">Cohort Dashboard</span>
             <h2>Product-ops baseline across saved bundles</h2>
           </div>
-          <span className="microcopy">Default filters: all dates, all sources, all languages, all readiness tiers.</span>
+          <span className="microcopy">Filter the saved bundles by source, mode, language, readiness, duration, quality, and human↔AI posture.</span>
         </div>
+        <form className="filter-bar" method="get">
+          <select className="filter-select" defaultValue={filters.sourceType} name="source_type">
+            <option value="all">All source types</option>
+            {sourceOptions.map((sourceType) => (
+              <option key={sourceType} value={sourceType}>
+                {sourceType}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.analysisMode} name="analysis_mode">
+            <option value="all">All analysis modes</option>
+            {analysisOptions.map((analysisMode) => (
+              <option key={analysisMode} value={analysisMode}>
+                {analysisMode}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.language} name="language">
+            <option value="all">All languages</option>
+            {languageOptions.map((language) => (
+              <option key={language} value={language}>
+                {language}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.readinessTier} name="readiness_tier">
+            <option value="all">All readiness tiers</option>
+            <option value="full">Full</option>
+            <option value="partial">Partial</option>
+            <option value="transcript_only">Transcript only</option>
+            <option value="blocked">Blocked</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.durationBand} name="duration_band">
+            <option value="all">All duration bands</option>
+            <option value="under_3m">Under 3m</option>
+            <option value="3m_to_10m">3m to 10m</option>
+            <option value="10m_to_30m">10m to 30m</option>
+            <option value="30m_plus">30m+</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.qualityBand} name="quality_band">
+            <option value="all">All quality bands</option>
+            <option value="clean">Clean</option>
+            <option value="watch">Watch</option>
+            <option value="risky">Risky</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.rolePresence} name="role_presence">
+            <option value="all">All role mixes</option>
+            <option value="human_ai">Human + AI</option>
+            <option value="human_only">Human only</option>
+            <option value="ai_only">AI only</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <button className="filter-toggle active" type="submit">
+            Apply filters
+          </button>
+          <Link className="filter-toggle" href="/">
+            Clear
+          </Link>
+        </form>
         <div className="badge-row">
-          <span className="badge accent">All date windows</span>
-          <span className="badge">All source types</span>
-          <span className="badge">All analysis modes</span>
-          <span className="badge">All languages</span>
-          <span className="badge">All duration bands</span>
-          <span className="badge">All quality bands</span>
+          <span className="badge accent">Runs in view {bundles.length}</span>
+          <span className="badge">Source {filters.sourceType === "all" ? "all" : filters.sourceType}</span>
+          <span className="badge">Mode {filters.analysisMode === "all" ? "all" : filters.analysisMode}</span>
+          <span className="badge">Language {filters.language === "all" ? "all" : filters.language}</span>
+          <span className="badge">Readiness {filters.readinessTier === "all" ? "all" : filters.readinessTier}</span>
         </div>
         <div className="ribbon-grid" style={{ marginTop: 18 }}>
           {cohorts.kpis.map((kpi) => (
@@ -115,9 +195,9 @@ export default function HomePage() {
           <span className="microcopy">{bundles.reduce((sum, bundle) => sum + bundle.events.length, 0)} events attached to the timeline</span>
         </article>
         <article className="ribbon-card">
-          <span className="sample-meta">Adapter posture</span>
-          <strong>Hybrid optional stack</strong>
-          <span className="microcopy">FFmpeg-first, optional ASR / diarization / environment enrichments</span>
+          <span className="sample-meta">Readiness posture</span>
+          <strong>{cohorts.distributions.find((distribution) => distribution.key === "readiness_mix")?.items[0]?.label ?? "No runs yet"}</strong>
+          <span className="microcopy">Readiness tiers stay visible so transcript-only runs remain usable instead of looking broken.</span>
         </article>
       </section>
 
@@ -274,44 +354,48 @@ export default function HomePage() {
               <span className="microcopy">Session cards bias toward operational scanability instead of landing-page copy.</span>
             </div>
             <div className="session-grid">
-              {bundles.map((bundle) => (
-                <Link href={`/sessions/${bundle.session.session_id}`} className="session-card" key={bundle.session.session_id}>
-                  <div className="badge-row">
-                    <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
-                    <span className="badge">{bundle.session.analysis_mode}</span>
-                    <span className="badge accent">{bundle.session.source_type}</span>
-                  </div>
-                  <h3>{bundle.session.title}</h3>
-                  <p className="sample-meta">
-                    {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.duration_sec.toFixed(1)} sec
-                  </p>
-                  <div className="session-card-metrics">
-                    <div>
-                      <span className="row-label">Quality</span>
-                      <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
+              {bundles.length ? (
+                bundles.map((bundle) => (
+                  <Link href={`/sessions/${bundle.session.session_id}`} className="session-card" key={bundle.session.session_id}>
+                    <div className="badge-row">
+                      <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
+                      <span className="badge">{bundle.session.analysis_mode}</span>
+                      <span className="badge accent">{bundle.session.source_type}</span>
                     </div>
-                    <div>
-                      <span className="row-label">Noise ratio</span>
-                      <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
+                    <h3>{bundle.session.title}</h3>
+                    <p className="sample-meta">
+                      {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.duration_sec.toFixed(1)} sec
+                    </p>
+                    <div className="session-card-metrics">
+                      <div>
+                        <span className="row-label">Quality</span>
+                        <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Noise ratio</span>
+                        <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Questions</span>
+                        <strong>{bundle.questions.length}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Top signal</span>
+                        <strong>{bundle.signals[0]?.label ?? "Pending"}</strong>
+                      </div>
                     </div>
-                    <div>
-                      <span className="row-label">Questions</span>
-                      <strong>{bundle.questions.length}</strong>
+                    <div className="badge-row">
+                      {bundle.signals.slice(0, 3).map((signal) => (
+                        <span key={signal.key} className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>
+                          {signal.label} {signal.score}
+                        </span>
+                      ))}
                     </div>
-                    <div>
-                      <span className="row-label">Top signal</span>
-                      <strong>{bundle.signals[0]?.label ?? "Pending"}</strong>
-                    </div>
-                  </div>
-                  <div className="badge-row">
-                    {bundle.signals.slice(0, 3).map((signal) => (
-                      <span key={signal.key} className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>
-                        {signal.label} {signal.score}
-                      </span>
-                    ))}
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              ) : (
+                <div className="empty-state">No sessions match the current cohort filters.</div>
+              )}
             </div>
           </section>
         </div>

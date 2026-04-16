@@ -11,9 +11,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from spectrum_core.datasets import list_dataset_records
-from spectrum_core.models import AnalysisMode, CohortFilters, DatasetOverview, SessionBundle, SessionJobStatus, SessionRecord, SessionResult, SpeakerRole
+from spectrum_core.models import AnalysisMode, BenchmarkResult, CohortFilters, DatasetOverview, SessionBundle, SessionJobStatus, SessionRecord, SessionResult, SpeakerRole
 from spectrum_core.registry import build_adapter_inventory, metric_catalog
-from spectrum_pipeline.benchmarks import benchmark_registry, benchmark_results
+from spectrum_pipeline.benchmarks import benchmark_registry, benchmark_results, load_benchmark_snapshot
 from spectrum_pipeline.cohorts import cohort_summary, distributions as cohort_distributions, trend_series
 from spectrum_pipeline.importers import CURATED_DATASET_IDS, import_demo_pack, import_materialized_dataset_samples
 from spectrum_pipeline.openai_provider import load_local_env
@@ -328,6 +328,7 @@ def _cohort_filters_from_query(
     languages: list[str] | None = None,
     duration_band: str | None = None,
     quality_band: str | None = None,
+    readiness_tiers: list[str] | None = None,
     role_presence: str | None = None,
     projects: list[str] | None = None,
     tags: list[str] | None = None,
@@ -341,6 +342,7 @@ def _cohort_filters_from_query(
         languages=languages or [],
         duration_band=duration_band,
         quality_band=quality_band,
+        readiness_tiers=[tier for tier in (readiness_tiers or []) if tier in {"full", "partial", "transcript_only", "blocked"}],
         role_presence=role_presence,
         projects=projects or [],
         tags=tags or [],
@@ -357,11 +359,12 @@ def get_cohort_summary(
     languages: list[str] = Query(default_factory=list),
     duration_band: str | None = Query(default=None),
     quality_band: str | None = Query(default=None),
+    readiness_tiers: list[str] = Query(default_factory=list),
     role_presence: str | None = Query(default=None),
     projects: list[str] = Query(default_factory=list),
     tags: list[str] = Query(default_factory=list),
 ) -> dict[str, Any]:
-    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, role_presence, projects, tags)
+    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, readiness_tiers, role_presence, projects, tags)
     return cohort_summary(list_saved_bundles(), filters).model_dump(mode="json")
 
 
@@ -375,11 +378,12 @@ def get_cohort_trends(
     languages: list[str] = Query(default_factory=list),
     duration_band: str | None = Query(default=None),
     quality_band: str | None = Query(default=None),
+    readiness_tiers: list[str] = Query(default_factory=list),
     role_presence: str | None = Query(default=None),
     projects: list[str] = Query(default_factory=list),
     tags: list[str] = Query(default_factory=list),
 ) -> list[dict[str, Any]]:
-    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, role_presence, projects, tags)
+    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, readiness_tiers, role_presence, projects, tags)
     return [item.model_dump(mode="json") for item in trend_series(list_saved_bundles(), filters)]
 
 
@@ -393,11 +397,12 @@ def get_cohort_distributions(
     languages: list[str] = Query(default_factory=list),
     duration_band: str | None = Query(default=None),
     quality_band: str | None = Query(default=None),
+    readiness_tiers: list[str] = Query(default_factory=list),
     role_presence: str | None = Query(default=None),
     projects: list[str] = Query(default_factory=list),
     tags: list[str] = Query(default_factory=list),
 ) -> list[dict[str, Any]]:
-    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, role_presence, projects, tags)
+    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, readiness_tiers, role_presence, projects, tags)
     return [item.model_dump(mode="json") for item in cohort_distributions(list_saved_bundles(), filters)]
 
 
@@ -411,27 +416,40 @@ def get_cohort_sessions(
     languages: list[str] = Query(default_factory=list),
     duration_band: str | None = Query(default=None),
     quality_band: str | None = Query(default=None),
+    readiness_tiers: list[str] = Query(default_factory=list),
     role_presence: str | None = Query(default=None),
     projects: list[str] = Query(default_factory=list),
     tags: list[str] = Query(default_factory=list),
 ) -> list[dict[str, Any]]:
-    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, role_presence, projects, tags)
+    filters = _cohort_filters_from_query(date_from, date_to, dataset_ids, source_types, analysis_modes, languages, duration_band, quality_band, readiness_tiers, role_presence, projects, tags)
     return [item.model_dump(mode="json") for item in cohort_summary(list_saved_bundles(), filters).runs]
 
 
 @app.get("/api/v1/benchmarks")
 def get_benchmarks() -> dict[str, Any]:
     bundles = list_saved_bundles()
+    previous_snapshot = load_benchmark_snapshot()
+    previous_results = (
+        [BenchmarkResult.model_validate(item) for item in previous_snapshot.get("results", [])]
+        if isinstance(previous_snapshot, dict)
+        else None
+    )
     return {
         "registry": [entry.model_dump(mode="json") for entry in benchmark_registry()],
-        "results": [result.model_dump(mode="json") for result in benchmark_results(bundles)],
+        "results": [result.model_dump(mode="json") for result in benchmark_results(bundles, previous_results=previous_results)],
     }
 
 
 @app.get("/api/v1/benchmarks/{benchmark_id}")
 def get_benchmark_detail(benchmark_id: str) -> dict[str, Any]:
     registry = benchmark_registry()
-    results = benchmark_results(list_saved_bundles())
+    previous_snapshot = load_benchmark_snapshot()
+    previous_results = (
+        [BenchmarkResult.model_validate(item) for item in previous_snapshot.get("results", [])]
+        if isinstance(previous_snapshot, dict)
+        else None
+    )
+    results = benchmark_results(list_saved_bundles(), previous_results=previous_results)
     entry = next((item for item in registry if item.benchmark_id == benchmark_id), None)
     matching = [result for result in results if result.dataset_id == benchmark_id or result.benchmark_id == benchmark_id]
     if entry is None and not matching:

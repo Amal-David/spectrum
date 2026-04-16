@@ -198,13 +198,19 @@ def test_cohort_and_benchmark_endpoints_respond(tmp_path: Path) -> None:
     distributions = client.get("/api/v1/cohorts/distributions")
     assert distributions.status_code == 200
     assert isinstance(distributions.json(), list)
+    assert any(item["key"] == "readiness_mix" for item in distributions.json())
 
     sessions = client.get("/api/v1/cohorts/sessions")
     assert sessions.status_code == 200
     assert any(item["session_id"] == job_id for item in sessions.json())
+    readiness_tier = next(item["readiness_tier"] for item in sessions.json() if item["session_id"] == job_id)
+    filtered_sessions = client.get("/api/v1/cohorts/sessions", params={"readiness_tiers": readiness_tier})
+    assert filtered_sessions.status_code == 200
+    assert any(item["session_id"] == job_id for item in filtered_sessions.json())
 
     benchmarks = client.get("/api/v1/benchmarks")
     assert benchmarks.status_code == 200
     payload = benchmarks.json()
     assert payload["registry"]
     assert payload["results"]
+    assert all("regressed" in result for result in payload["results"])

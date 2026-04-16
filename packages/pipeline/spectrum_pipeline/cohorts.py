@@ -86,6 +86,8 @@ def _matches_filters(bundle: SessionBundle, filters: CohortFilters) -> bool:
         return False
     if filters.quality_band and _quality_band(bundle) != filters.quality_band:
         return False
+    if filters.readiness_tiers and bundle.session.readiness_tier not in set(filters.readiness_tiers):
+        return False
     if filters.role_presence and _role_presence(bundle) != filters.role_presence:
         return False
     project, tags = _project_tags(bundle)
@@ -193,6 +195,7 @@ def distributions(bundles: list[SessionBundle], filters: CohortFilters | None = 
     quality_counter = Counter(_quality_band(bundle) for bundle in matched)
     source_counter = Counter(bundle.session.source_type for bundle in matched)
     duration_counter = Counter(_duration_band(bundle.session.duration_sec) for bundle in matched)
+    readiness_counter = Counter(bundle.session.readiness_tier for bundle in matched)
     dominant_emotions = Counter(
         sentence.emotion_label
         for bundle in matched
@@ -214,6 +217,11 @@ def distributions(bundles: list[SessionBundle], filters: CohortFilters | None = 
             key="duration_mix",
             label="Duration bands",
             items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in duration_counter.items()],
+        ),
+        CohortDistribution(
+            key="readiness_mix",
+            label="Readiness tiers",
+            items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in readiness_counter.items()],
         ),
         CohortDistribution(
             key="dominant_human_emotions",

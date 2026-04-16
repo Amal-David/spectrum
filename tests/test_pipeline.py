@@ -10,6 +10,8 @@ import numpy as np
 
 from spectrum_pipeline.importers import import_demo_pack
 from spectrum_pipeline.analyzer import analyze_audio_file
+from spectrum_pipeline.benchmarks import benchmark_results
+from spectrum_pipeline.cohorts import cohort_summary
 from spectrum_core.models import ProviderDecision
 from spectrum_pipeline.service import JOB_STAGE_COUNT, JobProgressReporter, SessionStore, TranscriptionOutcome, apply_manual_role_overrides
 
@@ -184,10 +186,32 @@ def test_uploaded_sessions_gate_speaker_attribution_without_strong_diarization(t
     assert bundle_payload["diarization"]["readiness_state"] == "fallback"
     assert bundle_payload["diarization"]["segments"]
     laugh_cue = next(cue for cue in bundle_payload["nonverbal_cues"] if cue["type"] == "laugh")
-    assert laugh_cue["display_state"] == "hidden"
+    assert laugh_cue["display_state"] == "muted"
     assert laugh_cue["speaker_id"] is None
+    assert "speaker_attribution_blocked" in laugh_cue["explainability_mask"]
     speaker_track = next(track for track in bundle_payload["timeline_tracks"] if track["track_id"] == "speaker-lanes")
     assert speaker_track["status"] == "fallback"
+
+
+def test_textual_nonverbal_cues_surface_for_uploaded_audio(tmp_path: Path) -> None:
+    audio_path = tmp_path / "upload-textual-cues.wav"
+    _write_test_wav(audio_path)
+
+    analyze_audio_file(
+        audio_path,
+        analysis_mode="full",
+        metadata={
+            "transcript_hint": "haha yes okay i can help with that",
+            "dialogue_turns": ["haha", "okay", "okay i can help with that"],
+            "speaker_sequence": ["speaker_0", "speaker_1", "speaker_1"],
+        },
+        job_id="test-upload-textual-cues",
+    )
+
+    bundle_payload = json.loads((Path("runs") / "test-upload-textual-cues" / "bundle.json").read_text())
+    cue_types = {cue["type"] for cue in bundle_payload["nonverbal_cues"]}
+    assert "laugh" in cue_types
+    assert "backchannel" in cue_types
 
 
 def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path: Path) -> None:
@@ -277,6 +301,82 @@ def test_local_asr_is_default_and_records_readiness(monkeypatch: Any, tmp_path: 
     provider_keys = [item["provider_key"] for item in bundle_payload["diagnostics"]["provider_decisions"]]
     assert provider_keys[0] == "faster_whisper"
     assert "oss_first_local_pipeline" in bundle_payload["diagnostics"]["fallback_logic"]
+
+
+def test_cohort_summary_filters_by_readiness_tier(tmp_path: Path) -> None:
+    audio_path = tmp_path / "readiness-filter.wav"
+    _write_test_wav(audio_path)
+
+    analyze_audio_file(
+        audio_path,
+        analysis_mode="full",
+        metadata={"transcript_hint": "hello there from readiness filter"},
+        job_id="test-readiness-filter",
+    )
+
+    bundle_payload = json.loads((Path("runs") / "test-readiness-filter" / "bundle.json").read_text())
+    from spectrum_core.models import CohortFilters, SessionBundle  # local import to avoid widening top imports
+
+    summary = cohort_summary(
+        [SessionBundle.model_validate(bundle_payload)],
+        CohortFilters(readiness_tiers=[bundle_payload["session"]["readiness_tier"]]),
+    )
+    assert len(summary.runs) == 1
+    empty = cohort_summary([SessionBundle.model_validate(bundle_payload)], CohortFilters(readiness_tiers=["blocked"]))
+    assert not empty.runs
+
+
+def test_benchmark_results_compare_against_previous_snapshot() -> None:
+    audio_path = Path("runs") / "test-benchmark-regression.wav"
+    _write_test_wav(audio_path)
+    analyze_audio_file(
+        audio_path,
+        analysis_mode="full",
+        metadata={
+            "dataset_id": "meld",
+            "source_type": "materialized_audio_dataset",
+            "transcript_hint": "I am happy to help.",
+            "speaker_segments": [
+                {
+                    "turn_id": "benchmark-turn-0",
+                    "speaker_id": "speaker_0",
+                    "start_ms": 0,
+                    "end_ms": 1800,
+                    "text": "I am happy to help.",
+                }
+            ],
+            "sentence_emotion_labels": [
+                {
+                    "benchmark_id": "meld:1:1",
+                    "text": "I am happy to help.",
+                    "emotion_label": "joy",
+                    "sentiment_label": "positive",
+                    "start_ms": 0,
+                    "end_ms": 1800,
+                    "confidence": 0.99,
+                }
+            ],
+        },
+        job_id="test-benchmark-regression",
+    )
+    from spectrum_core.models import SessionBundle  # local import to avoid widening top imports
+
+    bundle_payload = json.loads((Path("runs") / "test-benchmark-regression" / "bundle.json").read_text())
+    bundles = [SessionBundle.model_validate(bundle_payload)]
+    current = benchmark_results(bundles)
+    previous = [
+        result.model_copy(
+            update={
+                "metrics": [
+                    metric.model_copy(update={"value": metric.value + 0.2 if metric.key == "der" else max(0.0, metric.value - 0.2)})
+                    for metric in result.metrics
+                ]
+            }
+        )
+        for result in current
+    ]
+    compared = benchmark_results(bundles, previous_results=previous)
+    assert any(metric.delta is not None for result in compared for metric in result.metrics)
 
 
 def test_manual_role_override_rebuilds_bundle(tmp_path: Path) -> None:

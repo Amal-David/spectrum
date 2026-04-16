@@ -191,6 +191,7 @@ class WordTimestamp(BaseModel):
     end_ms: int
     confidence: float = 0.0
     source: str = "heuristic"
+    speaker_id: str | None = None
 
 
 class ProfileField(BaseModel):
@@ -546,6 +547,7 @@ class CohortFilters(BaseModel):
     languages: list[str] = Field(default_factory=list)
     duration_band: str | None = None
     quality_band: str | None = None
+    readiness_tiers: list[ReadinessTier] = Field(default_factory=list)
     role_presence: str | None = None
     projects: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -636,6 +638,9 @@ class BenchmarkMetricResult(BaseModel):
     label: str
     value: float
     unit: str | None = None
+    previous_value: float | None = None
+    delta: float | None = None
+    regressed: bool = False
 
 
 class BenchmarkResult(BaseModel):
@@ -647,4 +652,5 @@ class BenchmarkResult(BaseModel):
     metrics: list[BenchmarkMetricResult] = Field(default_factory=list)
     run_timestamp: str | None = None
     model_stack: list[str] = Field(default_factory=list)
+    regressed: bool = False
     notes: list[str] = Field(default_factory=list)
