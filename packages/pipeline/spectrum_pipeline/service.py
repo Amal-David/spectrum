@@ -27,6 +27,7 @@ from spectrum_core.models import (
     DisplayState,
     Diagnostics,
     EnvironmentSummary,
+    EvidenceClass,
     EventModel,
     EvidenceRef,
     JobActivityEntry,
@@ -37,6 +38,7 @@ from spectrum_core.models import (
     PredictionSource,
     ProviderDecision,
     ProfileField,
+    ProfileCoverageSummary,
     ProfileSummary,
     ProsodyPoint,
     ProsodyTrack,
@@ -67,8 +69,10 @@ from spectrum_core.models import (
     WordTimestamp,
 )
 from spectrum_core.registry import build_adapter_inventory
+from .acoustic_cue_provider import detect_acoustic_vocal_cues, load_acoustic_cue_cache, save_acoustic_cue_cache
+from .alignment_provider import align_words_with_whisperx, load_alignment_cache, save_alignment_cache
 from .diarization_provider import diarize_with_pyannote, load_diarization_cache, save_diarization_cache
-from .nonverbal_provider import detect_energy_vocal_cues, detect_textual_vocal_cues
+from .nonverbal_provider import detect_textual_vocal_cues
 from .openai_provider import analyze_conversation_with_openai, openai_enabled, transcribe_audio_with_openai
 from .profile_provider import infer_accent_broad_signal, infer_age_signal, infer_voice_presentation_signal
 from .transcription_provider import load_transcription_cache, normalize_word_records, save_transcription_cache, transcribe_with_faster_whisper
@@ -147,6 +151,15 @@ class TranscriptionOutcome:
     )
 
 
+@dataclass
+class AlignmentOutcome:
+    words: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    provider: ProviderDecision = field(
+        default_factory=lambda: ProviderDecision(kind="alignment", provider_key="whisperx")
+    )
+
+
 def _provider_cache_path(job_id: str, kind: str) -> Path:
     return run_file(job_id, f"{kind}.provider.json")
 
@@ -179,8 +192,19 @@ def _normalize_provider_words(words: list[dict[str, Any]], *, source: str) -> li
     return normalize_word_records(words, source=source)
 
 
-def _readiness_tier(transcript: str, diarization: DiarizationSummary) -> ReadinessTier:
+def _readiness_tier(
+    transcript: str,
+    diarization: DiarizationSummary,
+    nonverbal_cues: list[NonverbalCue] | None = None,
+) -> ReadinessTier:
+    visible_vocal_cues = [
+        cue
+        for cue in (nonverbal_cues or [])
+        if cue.family == "vocal_sound" and cue.display_state in {"visible", "muted"}
+    ]
     if diarization.readiness_state == "ready" and transcript.strip():
+        if any(cue.attribution_state != "strong" for cue in visible_vocal_cues):
+            return "partial"
         return "full"
     if diarization.readiness_state == "fallback" and transcript.strip():
         return "partial"
@@ -1614,10 +1638,12 @@ def build_nonverbal_cues(
     quality: QualitySummary,
     words: list[WordTimestamp] | None = None,
     events: list[EventModel] | None = None,
+    acoustic_cues: list[NonverbalCue] | None = None,
 ) -> list[NonverbalCue]:
     cues: list[NonverbalCue] = []
     words = words or []
     events = events or []
+    acoustic_cues = acoustic_cues or []
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     strong_diarization = diarization.readiness_state == "ready"
 
@@ -1636,6 +1662,7 @@ def build_nonverbal_cues(
                 confidence=confidence,
                 source="benchmark_label",
                 display_state=confidence_display_state(confidence, label=cue_type, visible_threshold=0.65, muted_threshold=0.45),
+                attribution_state="strong" if speaker_id else "unassigned",
                 speaker_id=str(speaker_id) if speaker_id else None,
                 evidence_refs=[EvidenceRef(kind="benchmark", ref_id=str(cue.get("benchmark_id", cue_type)), label=str(cue.get("label", cue_type)))],
                 explainability_mask=["benchmark_label"],
@@ -1665,6 +1692,7 @@ def build_nonverbal_cues(
                         confidence=0.62 if strong_diarization else 0.48,
                         source="heuristic",
                         display_state="muted" if source_type == "direct_audio_file" and not strong_diarization else "visible",
+                        attribution_state="strong" if speaker_id else ("muted" if source_type != "direct_audio_file" else "unassigned"),
                         speaker_id=speaker_id,
                         evidence_refs=[EvidenceRef(kind="prosody_track", ref_id="pitch_hz", label="Pitch")],
                         explainability_mask=["heuristic_prosody"],
@@ -1692,6 +1720,7 @@ def build_nonverbal_cues(
                         confidence=0.58,
                         source="heuristic",
                         display_state="muted",
+                        attribution_state="strong" if speaker_id else "muted",
                         speaker_id=speaker_id,
                         evidence_refs=[EvidenceRef(kind="prosody_track", ref_id="energy_rms", label="Energy")],
                         explainability_mask=["heuristic_prosody"],
@@ -1699,6 +1728,7 @@ def build_nonverbal_cues(
                 )
                 last_energy_spike_ms = current.timestamp_ms
 
+    cues.extend(acoustic_cues)
     cues.extend(
         detect_textual_vocal_cues(
             job_id=job_id,
@@ -1706,17 +1736,6 @@ def build_nonverbal_cues(
             words=words,
             diarization=diarization,
             strong_diarization=strong_diarization,
-            source_type=source_type,
-        )
-    )
-    cues.extend(
-        detect_energy_vocal_cues(
-            job_id=job_id,
-            prosody_tracks=prosody_tracks,
-            words=words,
-            diarization=diarization,
-            strong_diarization=strong_diarization,
-            quality=quality,
             source_type=source_type,
         )
     )
@@ -1736,6 +1755,7 @@ def build_nonverbal_cues(
                 confidence=max(0.45, event.confidence or 0.58),
                 source="heuristic",
                 display_state="visible" if strong_diarization or source_type != "direct_audio_file" else "muted",
+                attribution_state="strong" if speaker_id else ("muted" if source_type != "direct_audio_file" else "unassigned"),
                 speaker_id=speaker_id,
                 evidence_refs=list(event.evidence_refs),
                 explainability_mask=["event_backchannel"],
@@ -1764,6 +1784,7 @@ def build_nonverbal_cues(
                 confidence=0.7 if not explainability else 0.54,
                 source="heuristic",
                 display_state="visible" if not explainability else "muted",
+                attribution_state="strong" if speaker_id else "muted",
                 speaker_id=speaker_id,
                 evidence_refs=list(question.evidence_refs),
                 explainability_mask=sorted(set(explainability)),
@@ -1775,6 +1796,7 @@ def build_nonverbal_cues(
             if cue.family == "vocal_sound":
                 cue.display_state = "muted"
                 cue.speaker_id = None
+                cue.attribution_state = "unassigned"
                 cue.explainability_mask = sorted(set(cue.explainability_mask + ["speaker_attribution_blocked"]))
 
     return sorted(cues, key=lambda cue: (cue.start_ms, cue.end_ms))
@@ -2083,6 +2105,154 @@ def maybe_transcribe(job_id: str, audio_path: Path, transcript_hint: str | None 
     )
 
 
+def maybe_align_words(
+    job_id: str,
+    audio_path: Path,
+    metadata: dict[str, Any],
+    provider_words: list[dict[str, Any]],
+    adapters: list[Any],
+) -> AlignmentOutcome:
+    if not provider_words:
+        return AlignmentOutcome(
+            words=[],
+            warnings=["alignment_missing"],
+            provider=ProviderDecision(
+                kind="alignment",
+                provider_key="whisperx",
+                used=False,
+                cached=False,
+                status="blocked",
+                notes=["alignment_missing"],
+            ),
+        )
+
+    whisperx = _adapter_lookup(adapters, "whisperx")
+    if not whisperx or not whisperx.available:
+        return AlignmentOutcome(
+            words=provider_words,
+            warnings=["alignment_missing"],
+            provider=ProviderDecision(
+                kind="alignment",
+                provider_key="whisperx",
+                used=False,
+                cached=False,
+                status="fallback",
+                notes=["alignment_missing"],
+            ),
+        )
+
+    cache_path = _provider_cache_path(job_id, "alignment")
+    cached = load_alignment_cache(cache_path)
+    if cached and cached.get("words"):
+        words = _normalize_provider_words(list(cached.get("words", [])), source="model")
+        return AlignmentOutcome(
+            words=words,
+            warnings=[],
+            provider=ProviderDecision(
+                kind="alignment",
+                provider_key="whisperx",
+                used=True,
+                cached=True,
+                status="ready",
+                notes=["alignment_cache_reused"],
+            ),
+        )
+
+    aligned_words, warnings = align_words_with_whisperx(
+        audio_path,
+        provider_words,
+        language=metadata.get("language_hint"),
+    )
+    normalized = _normalize_provider_words(aligned_words, source="model")
+    if normalized and not warnings:
+        save_alignment_cache(
+            cache_path,
+            {
+                "provider_key": "whisperx",
+                "words": normalized,
+            },
+        )
+        return AlignmentOutcome(
+            words=normalized,
+            warnings=[],
+            provider=ProviderDecision(
+                kind="alignment",
+                provider_key="whisperx",
+                used=True,
+                cached=False,
+                status="ready",
+                notes=[],
+            ),
+        )
+
+    return AlignmentOutcome(
+        words=provider_words,
+        warnings=warnings or ["alignment_missing"],
+        provider=ProviderDecision(
+            kind="alignment",
+            provider_key="whisperx",
+            used=False,
+            cached=False,
+            status="fallback",
+            notes=warnings or ["alignment_missing"],
+        ),
+    )
+
+
+def maybe_detect_acoustic_cues(
+    job_id: str,
+    prosody_tracks: list[ProsodyTrack],
+    words: list[WordTimestamp],
+    diarization: DiarizationSummary,
+    quality: QualitySummary,
+    source_type: str,
+    adapters: list[Any],
+) -> tuple[list[NonverbalCue], ProviderDecision]:
+    cache_path = _provider_cache_path(job_id, "acoustic_cues")
+    cached = load_acoustic_cue_cache(cache_path)
+    if cached:
+        provider_key, cues = cached
+        return cues, ProviderDecision(
+            kind="nonverbal_cues",
+            provider_key=provider_key,
+            used=bool(cues),
+            cached=True,
+            status="ready" if cues else "fallback",
+            notes=["acoustic_cue_cache_reused"],
+        )
+
+    yamnet = _adapter_lookup(adapters, "yamnet")
+    panns = _adapter_lookup(adapters, "panns")
+    preferred_model = "yamnet" if yamnet and yamnet.available else "panns" if panns and panns.available else None
+    provider_key = preferred_model or "acoustic_heuristic"
+    cues = detect_acoustic_vocal_cues(
+        job_id=job_id,
+        prosody_tracks=prosody_tracks,
+        words=words,
+        diarization=diarization,
+        quality=quality,
+        source_type=source_type,
+        provider_key=provider_key,
+        model_backed=False,
+    )
+    save_acoustic_cue_cache(cache_path, provider_key, cues)
+    notes = (
+        [f"{preferred_model}_adapter_available_proxy_mode", "acoustic_classifier_not_wired"]
+        if preferred_model
+        else []
+    )
+    if not cues:
+        notes.extend(["speaker_attribution_blocked"] if diarization.readiness_state != "ready" else ["acoustic_cues_not_detected"])
+    return cues, ProviderDecision(
+        kind="nonverbal_cues",
+        provider_key=provider_key,
+        used=bool(cues),
+        cached=False,
+        status="ready" if cues else "fallback",
+        notes=notes,
+    )
+
+
 def build_quality(audio_path: Path, analysis_mode: AnalysisMode, silences: list[tuple[float, float]], metadata: dict[str, Any]) -> QualitySummary:
     duration_sec = probe_duration(audio_path)
     silence_sec = sum(end - start for start, end in silences)
@@ -2380,7 +2550,7 @@ def build_profile(
     *,
     audio_path: Path | None = None,
     adapters: list[Any] | None = None,
-) -> tuple[ProfileSummary, list[ProfileField]]:
+) -> tuple[ProfileSummary, list[ProfileField], ProfileCoverageSummary, ProviderDecision]:
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     dataset_id = str(metadata.get("dataset_id") or "")
     trusted_metadata = source_type in {"demo_pack_zip", "materialized_audio_dataset"} or dataset_id in {"ravdess_speech_16k", "meld"}
@@ -2439,15 +2609,21 @@ def build_profile(
         warning_flags=list(age_signal["warning_flags"]),
     )
 
-    if not options.prototype_noncommercial and source_type == "direct_audio_file":
-        if voice_presentation.label != "unknown":
-            voice_presentation.warning_flags.append("prototype_path_disabled")
-            voice_presentation.summary = "Voice presentation remains hidden in the UI on ad hoc uploads unless a prototype-only path is enabled."
+    if source_type == "direct_audio_file":
+        if voice_presentation.label != "unknown" and voice_presentation.source != "benchmark_label":
+            voice_presentation.warning_flags.append("trusted_metadata_required")
+            voice_presentation.summary = "Voice presentation stays hidden on ad hoc uploads unless benchmark-backed or trusted metadata explicitly supports it."
             voice_presentation.display_state = "hidden"
-        if age_band.label != "unknown" and age_band.source != "benchmark_label":
-            age_band.warning_flags.append("prototype_path_disabled")
-            age_band.summary = "Age-band output remains hidden in the UI on ad hoc uploads unless a trusted benchmark or prototype path is enabled."
+        if age_band.label != "unknown" and age_band.source not in {"benchmark_label", "metadata_hint"}:
+            age_band.warning_flags.append("trusted_metadata_required")
+            age_band.summary = "Age-band output stays hidden on ad hoc uploads unless benchmark-backed or trusted metadata supports it."
             age_band.display_state = "hidden"
+        if age_band.label != "unknown" and age_band.source == "metadata_hint" and not trusted_metadata:
+            age_band.warning_flags.append("trusted_metadata_required")
+            age_band.display_state = "hidden"
+        if voice_presentation.label != "unknown" and voice_presentation.source == "metadata_hint" and not trusted_metadata:
+            voice_presentation.warning_flags.append("trusted_metadata_required")
+            voice_presentation.display_state = "hidden"
 
     if not quality.is_usable:
         for prediction in (accent_broad, accent_fine, voice_presentation, age_band):
@@ -2504,7 +2680,28 @@ def build_profile(
                 details={"dominant_speaker": speakers[0].speaker_id, "prosody_posture": prosody_posture},
             )
         )
-    return profile, display
+    coverage = ProfileCoverageSummary(
+        model_backed_fields=[field.key for field in display if field.source == "model" and field.display_state in {"visible", "muted"}],
+        metadata_only_fields=[field.key for field in display if field.source in {"metadata_hint", "benchmark_label"} and field.display_state in {"visible", "muted"}],
+        hidden_fields=[field.key for field in display if field.display_state == "hidden"],
+        unavailable_fields=[field.key for field in display if field.display_state == "unavailable"],
+    )
+    provider_key = "speechbrain_commonaccent" if accent_broad.source == "model" else "metadata_profile" if coverage.metadata_only_fields else "heuristic_profile"
+    provider_status: StageState = "ready" if any(field.display_state in {"visible", "muted"} for field in display) else "fallback"
+    provider_notes = sorted({warning for field in display for warning in field.warning_flags})
+    return (
+        profile,
+        display,
+        coverage,
+        ProviderDecision(
+            kind="profile",
+            provider_key=provider_key,
+            used=provider_status == "ready",
+            cached=False,
+            status=provider_status,
+            notes=provider_notes,
+        ),
+    )
 
 
 def build_metrics(
@@ -2826,12 +3023,13 @@ def build_content(
     quality: QualitySummary | None = None,
     events: list[EventModel] | None = None,
     questions: list[QuestionAnalyticsRow] | None = None,
+    words_override: list[WordTimestamp] | None = None,
 ) -> ContentSummary:
     metadata = metadata or {}
     quality = quality or QualitySummary()
     events = events or []
     questions = questions or []
-    words = _build_word_timestamps(turns, transcript, metadata)
+    words = words_override or _build_word_timestamps(turns, transcript, metadata)
     sentences = _build_sentence_spans(turns, metadata, quality, events, questions)
     tokens = _build_token_spans(words, sentences)
     fillers = sorted({marker for turn in turns for marker in derive_fillers(turn.text)})
@@ -3014,14 +3212,23 @@ def build_signals(
     if quality.vad_fp_count or quality.vad_fn_count:
         explainability.append("vad_instability")
 
+    if any(sentence.speaker_role == "human" and sentence.source == "benchmark_label" for sentence in content.sentences):
+        evidence_class: EvidenceClass = "benchmark_backed"
+    elif any(sentence.speaker_role == "human" and sentence.source == "model" for sentence in content.sentences):
+        evidence_class = "model_backed"
+    elif any(sentence.speaker_role == "human" and sentence.source == "metadata_hint" for sentence in content.sentences):
+        evidence_class = "metadata_backed"
+    else:
+        evidence_class = "heuristic_backed"
+
     return [
-        _signal_card("hesitation", "Hesitation", hesitation_avg, f"Pause and filler burden averaged {hesitation_avg}/100 across question moments.", questions, explainability),
-        _signal_card("engagement_drift", "Engagement Drift", drift, "Later turns show lighter answer density and more drift than the opening half.", [event for event in events if event.type == "engagement_drop"], explainability),
-        _signal_card("reciprocity", "Reciprocity", reciprocity, "Speaker balance stays closer to healthy turn-sharing when talk ratio remains even.", speakers[:2], explainability),
-        _signal_card("friction", "Friction", friction_score, "Noise, interruptions, and guarded responses are compounding into operational friction.", events, explainability),
-        _signal_card("confidence_like_behavior", "Confidence-Like Behavior", confidence_like, "Direct answers and lower uncertainty markers lift this behavioral confidence proxy.", questions, explainability),
-        _signal_card("rapport", "Rapport", rapport_score, "Balanced turn-taking and limited overlap keep rapport in a steadier range.", speakers[:2], explainability),
-        _signal_card("frustration_risk", "Frustration Risk", frustration_risk, "Audio quality issues plus conversational friction raise the risk of a strained interaction.", events, explainability),
+        _signal_card("hesitation", "Hesitation", hesitation_avg, f"Pause and filler burden averaged {hesitation_avg}/100 across question moments.", questions, explainability, evidence_class=evidence_class),
+        _signal_card("engagement_drift", "Engagement Drift", drift, "Later turns show lighter answer density and more drift than the opening half.", [event for event in events if event.type == "engagement_drop"], explainability, evidence_class=evidence_class),
+        _signal_card("reciprocity", "Reciprocity", reciprocity, "Speaker balance stays closer to healthy turn-sharing when talk ratio remains even.", speakers[:2], explainability, evidence_class=evidence_class),
+        _signal_card("friction", "Friction", friction_score, "Noise, interruptions, and guarded responses are compounding into operational friction.", events, explainability, evidence_class=evidence_class),
+        _signal_card("confidence_like_behavior", "Confidence-Like Behavior", confidence_like, "Direct answers and lower uncertainty markers lift this behavioral confidence proxy.", questions, explainability, evidence_class=evidence_class),
+        _signal_card("rapport", "Rapport", rapport_score, "Balanced turn-taking and limited overlap keep rapport in a steadier range.", speakers[:2], explainability, evidence_class=evidence_class),
+        _signal_card("frustration_risk", "Frustration Risk", frustration_risk, "Audio quality issues plus conversational friction raise the risk of a strained interaction.", events, explainability, evidence_class=evidence_class),
     ]
 
 
@@ -3031,6 +3238,7 @@ def build_stage_status(
     quality: QualitySummary,
     environment: EnvironmentSummary,
     profile_display: list[ProfileField],
+    profile_coverage: ProfileCoverageSummary,
     speaker_roles: SpeakerRoleSummary,
     content: ContentSummary,
     questions: list[QuestionAnalyticsRow],
@@ -3042,6 +3250,11 @@ def build_stage_status(
     nonverbal_cues: list[NonverbalCue],
     timeline_tracks: list[TimelineTrack],
 ) -> list[StageStatus]:
+    alignment_decision = next((decision for decision in diagnostics.provider_decisions if decision.kind == "alignment"), None)
+    nonverbal_decision = next((decision for decision in diagnostics.provider_decisions if decision.kind == "nonverbal_cues"), None)
+    profile_decision = next((decision for decision in diagnostics.provider_decisions if decision.kind == "profile"), None)
+    provisional_speaker_lanes = diarization.readiness_state == "fallback"
+    muted_vocal_cues = [cue for cue in nonverbal_cues if cue.family == "vocal_sound" and cue.attribution_state != "strong"]
     return [
         StageStatus(
             key="audio",
@@ -3056,7 +3269,7 @@ def build_stage_status(
             label="Diarization",
             status=diarization.readiness_state,
             summary="Speaker lanes require benchmark timing or strong diarization adapters before the waveform workspace will treat them as trustworthy.",
-            caveats=list(diarization.notes),
+            caveats=sorted(set(diarization.notes + (["speaker_lanes_provisional"] if provisional_speaker_lanes else []))),
             adapter_keys=["pyannote"],
         ),
         StageStatus(
@@ -3088,7 +3301,12 @@ def build_stage_status(
             label="Layer D · Content",
             status="ready" if content.transcript else "fallback",
             summary="Transcript, word timing proxies, topic labels, fillers, and uncertainty markers are bundled together.",
-            caveats=["transcript_hint_used"] if "transcript_hint_used" in diagnostics.confidence_caveats else [],
+            caveats=sorted(
+                set(
+                    (["transcript_hint_used"] if "transcript_hint_used" in diagnostics.confidence_caveats else [])
+                    + (alignment_decision.notes if alignment_decision else [])
+                )
+            ),
             adapter_keys=["faster_whisper", "whisperx"],
         ),
         StageStatus(
@@ -3104,7 +3322,12 @@ def build_stage_status(
             label="Profile",
             status="ready" if any(field.display_state in {"visible", "muted"} for field in profile_display) else "fallback",
             summary="Voice-profile fields are confidence-gated and only surfaced when the evidence posture supports them.",
-            caveats=sorted({warning for field in profile_display for warning in field.warning_flags}),
+            caveats=sorted(
+                {warning for field in profile_display for warning in field.warning_flags}
+                | ({f"hidden_fields:{len(profile_coverage.hidden_fields)}"} if profile_coverage.hidden_fields else set())
+                | ({f"unavailable_fields:{len(profile_coverage.unavailable_fields)}"} if profile_coverage.unavailable_fields else set())
+                | set(profile_decision.notes if profile_decision else [])
+            ),
             adapter_keys=["speechbrain_commonaccent", "ecapa_fine_accent", "audeering_age_gender"],
         ),
         StageStatus(
@@ -3128,7 +3351,10 @@ def build_stage_status(
             label="Alignment",
             status="ready" if content.words and content.sentences else "fallback",
             summary="Sentence and token overlays stay attached to the transcript only when timing alignment is good enough.",
-            caveats=["token_overlay_missing"] if not content.tokens else [],
+            caveats=sorted(
+                set((["token_overlay_missing"] if not content.tokens else []))
+                | set(alignment_decision.notes if alignment_decision else [])
+            ),
             adapter_keys=["whisperx"],
         ),
         StageStatus(
@@ -3136,7 +3362,12 @@ def build_stage_status(
             label="Non-Verbal Cues",
             status="ready" if any(cue.display_state in {"visible", "muted"} for cue in nonverbal_cues) else ("blocked" if diarization.readiness_state == "blocked" else "fallback"),
             summary="Laughter, vocal sounds, hesitation onsets, and prosody spikes share one confidence-gated cue ledger.",
-            caveats=sorted({mask for cue in nonverbal_cues for mask in cue.explainability_mask} | set(diarization.notes)),
+            caveats=sorted(
+                {mask for cue in nonverbal_cues for mask in cue.explainability_mask}
+                | set(diarization.notes)
+                | set(nonverbal_decision.notes if nonverbal_decision else [])
+                | ({"speaker_attribution_limited"} if muted_vocal_cues else set())
+            ),
             adapter_keys=["pyannote", "yamnet", "panns"],
         ),
         StageStatus(
@@ -3144,7 +3375,10 @@ def build_stage_status(
             label="Layer E · Signals",
             status="ready" if signals else "fallback",
             summary="Behavioral and emotional proxy cards carry evidence refs and explainability masks.",
-            caveats=list({mask for signal in signals for mask in signal.explainability_mask}),
+            caveats=sorted(
+                {mask for signal in signals for mask in signal.explainability_mask}
+                | {signal.evidence_class for signal in signals}
+            ),
             adapter_keys=["openai_audio_analysis", "opensmile", "speechbrain_commonaccent"],
         ),
         StageStatus(
@@ -3177,6 +3411,7 @@ def build_session_bundle(
     source_type: str,
     environment: EnvironmentSummary,
     profile_display: list[ProfileField],
+    profile_coverage: ProfileCoverageSummary,
     speaker_roles: SpeakerRoleSummary,
     diarization: DiarizationSummary,
     waveform: WaveformArtifact,
@@ -3214,6 +3449,7 @@ def build_session_bundle(
         environment=environment,
         profile=result.profile,
         profile_display=profile_display,
+        profile_coverage=profile_coverage,
         speaker_roles=speaker_roles,
         diarization=diarization,
         waveform=waveform,
@@ -3238,6 +3474,7 @@ def persist_session_artifacts(
     metadata: dict[str, Any],
     quality: QualitySummary,
     profile_display: list[ProfileField],
+    profile_coverage: ProfileCoverageSummary,
     diarization: DiarizationSummary,
     waveform: WaveformArtifact,
     spectrogram: SpectrogramArtifact,
@@ -3276,7 +3513,16 @@ def persist_session_artifacts(
     run_file(job_id, "roles.json").write_text(speaker_roles.model_dump_json(indent=2) + "\n")
     run_file(job_id, "environment.json").write_text(environment.model_dump_json(indent=2) + "\n")
     run_file(job_id, "signals.json").write_text(json.dumps([signal.model_dump(mode="json") for signal in signals], indent=2) + "\n")
-    run_file(job_id, "profile.json").write_text(json.dumps([field.model_dump(mode="json") for field in profile_display], indent=2) + "\n")
+    run_file(job_id, "profile.json").write_text(
+        json.dumps(
+            {
+                "fields": [field.model_dump(mode="json") for field in profile_display],
+                "coverage": profile_coverage.model_dump(mode="json"),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     run_file(job_id, "transcript.words.json").write_text(json.dumps([word.model_dump(mode="json") for word in content.words], indent=2) + "\n")
     run_file(job_id, "transcript.sentences.json").write_text(json.dumps([sentence.model_dump(mode="json") for sentence in content.sentences], indent=2) + "\n")
     run_file(job_id, "transcript.tokens.json").write_text(json.dumps([token.model_dump(mode="json") for token in content.tokens], indent=2) + "\n")
@@ -3305,6 +3551,7 @@ def create_session_result(
     duration_sec = probe_duration(normalized_path)
     silences = detect_silences(normalized_path)
     provider_preference = _upload_provider_preference(metadata)
+    adapters = build_adapter_inventory()
     openai_warnings: list[str] = []
     role_provider_decision = ProviderDecision(kind="role_analysis", provider_key="heuristic", used=True, cached=False, status="fallback", notes=["heuristic_role_analysis"])
     if provider_preference == "openai":
@@ -3330,11 +3577,13 @@ def create_session_result(
         if transcript_outcome.words:
             metadata = {**metadata, "transcript_word_timestamps": transcript_outcome.words}
     transcript = transcript_outcome.transcript
-    transcript_warnings = transcript_outcome.warnings
+    alignment_outcome = maybe_align_words(job_id, normalized_path, metadata, transcript_outcome.words, adapters)
+    if alignment_outcome.words:
+        metadata = {**metadata, "transcript_word_timestamps": alignment_outcome.words}
+    transcript_warnings = sorted(set(transcript_outcome.warnings + alignment_outcome.warnings))
     turns = build_turns_from_metadata(job_id, duration_sec, transcript, metadata, analysis_mode)
     if not transcript and turns:
         transcript = " ".join(turn.text for turn in turns if turn.text).strip()
-    adapters = build_adapter_inventory()
     if progress:
         progress("diarization", JOB_STAGE_BY_KEY["diarization"]["label"])
     diarization, diarization_provider = build_diarization(job_id, normalized_path, metadata, turns, adapters)
@@ -3372,6 +3621,52 @@ def create_session_result(
         )
     speakers, turns = apply_speaker_roles(speakers, turns, speaker_roles)
     events = build_events(job_id, turns, silences, quality, duration_sec, metadata)
+    profile, profile_display, profile_coverage, profile_provider_decision = build_profile(
+        analysis_mode,
+        metadata,
+        transcript,
+        quality,
+        speakers,
+        options,
+        audio_path=normalized_path,
+        adapters=adapters,
+    )
+    if progress:
+        progress("content", JOB_STAGE_BY_KEY["content"]["label"])
+    environment = build_environment(metadata, quality, events, duration_sec)
+    if progress:
+        progress("prosody", JOB_STAGE_BY_KEY["prosody"]["label"])
+    prosody_tracks = build_prosody_tracks(normalized_path, turns, duration_sec)
+    word_timestamps = _build_word_timestamps(turns, transcript, metadata)
+    acoustic_cues, acoustic_cue_provider = maybe_detect_acoustic_cues(
+        job_id,
+        prosody_tracks,
+        word_timestamps,
+        diarization,
+        quality,
+        str(metadata.get("source_type") or "direct_audio_file"),
+        adapters,
+    )
+    if progress:
+        progress("questions", JOB_STAGE_BY_KEY["questions"]["label"])
+    questions = build_questions(job_id, turns, events, quality, environment, metadata, speaker_roles)
+    if progress:
+        progress("affect", JOB_STAGE_BY_KEY["affect"]["label"])
+    content = build_content(transcript, turns, metadata, quality, events, questions, words_override=word_timestamps)
+    if progress:
+        progress("nonverbal_cues", JOB_STAGE_BY_KEY["nonverbal_cues"]["label"])
+    nonverbal_cues = build_nonverbal_cues(
+        job_id,
+        metadata,
+        diarization,
+        prosody_tracks,
+        turns,
+        questions,
+        quality,
+        words=content.words,
+        events=events,
+        acoustic_cues=acoustic_cues,
+    )
     diagnostics = Diagnostics(
         adapters=adapters,
         enabled_comparisons=[adapter.key for adapter in adapters if adapter.comparison_only and adapter.available and options.enable_comparisons],
@@ -3382,6 +3677,9 @@ def create_session_result(
                 *transcript_warnings,
                 *openai_warnings,
                 *diarization_provider.notes,
+                *alignment_outcome.provider.notes,
+                *acoustic_cue_provider.notes,
+                *profile_provider_decision.notes,
                 *(
                     ["transcript_missing_after_asr"]
                     if not transcript.strip()
@@ -3399,7 +3697,14 @@ def create_session_result(
                 ),
             }
         ),
-        provider_decisions=[transcript_outcome.provider, diarization_provider, role_provider_decision],
+        provider_decisions=[
+            transcript_outcome.provider,
+            alignment_outcome.provider,
+            diarization_provider,
+            acoustic_cue_provider,
+            role_provider_decision,
+            profile_provider_decision,
+        ],
         fallback_logic=[
             "ffmpeg_silence_analysis",
             "heuristic_question_mapping",
@@ -3407,47 +3712,12 @@ def create_session_result(
             "sentence_emotion_heuristics",
             "waveform_peak_decimation",
             "heuristic_prosody_tracks",
+            "acoustic_cue_provider",
             "openai_provider_override" if provider_preference == "openai" else "oss_first_local_pipeline",
         ],
     )
     if options.prototype_noncommercial:
         diagnostics.license_warnings.append("Prototype-only age/voice presentation path is enabled. Do not ship non-commercial outputs without legal review.")
-
-    profile, profile_display = build_profile(
-        analysis_mode,
-        metadata,
-        transcript,
-        quality,
-        speakers,
-        options,
-        audio_path=normalized_path,
-        adapters=adapters,
-    )
-    if progress:
-        progress("content", JOB_STAGE_BY_KEY["content"]["label"])
-    environment = build_environment(metadata, quality, events, duration_sec)
-    if progress:
-        progress("prosody", JOB_STAGE_BY_KEY["prosody"]["label"])
-    prosody_tracks = build_prosody_tracks(normalized_path, turns, duration_sec)
-    if progress:
-        progress("questions", JOB_STAGE_BY_KEY["questions"]["label"])
-    questions = build_questions(job_id, turns, events, quality, environment, metadata, speaker_roles)
-    if progress:
-        progress("affect", JOB_STAGE_BY_KEY["affect"]["label"])
-    content = build_content(transcript, turns, metadata, quality, events, questions)
-    if progress:
-        progress("nonverbal_cues", JOB_STAGE_BY_KEY["nonverbal_cues"]["label"])
-    nonverbal_cues = build_nonverbal_cues(
-        job_id,
-        metadata,
-        diarization,
-        prosody_tracks,
-        turns,
-        questions,
-        quality,
-        words=content.words,
-        events=events,
-    )
     metrics = build_metrics(duration_sec, transcript, quality, speakers, turns, events, questions, speaker_roles)
     source = DatasetReference(
         dataset_id=metadata.get("dataset_id"),
@@ -3511,6 +3781,7 @@ def create_session_result(
         quality,
         environment,
         profile_display,
+        profile_coverage,
         speaker_roles,
         content,
         questions,
@@ -3522,7 +3793,7 @@ def create_session_result(
         nonverbal_cues,
         timeline_tracks,
     )
-    readiness_tier = _readiness_tier(transcript, diarization)
+    readiness_tier = _readiness_tier(transcript, diarization, nonverbal_cues)
     bundle = build_session_bundle(
         result,
         session_title=str(metadata.get("title") or original_path.stem.replace("_", " ").title()),
@@ -3533,6 +3804,7 @@ def create_session_result(
         source_type=str(metadata.get("source_type") or "direct_audio_file"),
         environment=environment,
         profile_display=profile_display,
+        profile_coverage=profile_coverage,
         speaker_roles=speaker_roles,
         diarization=diarization,
         waveform=waveform,
@@ -3553,6 +3825,7 @@ def create_session_result(
         metadata,
         quality,
         profile_display,
+        profile_coverage,
         diarization,
         waveform,
         spectrogram,
@@ -3576,7 +3849,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
     speakers, turns = apply_speaker_roles(list(result.speakers), list(result.turns), speaker_roles)
     adapters = result.diagnostics.adapters
     normalized_path = Path(result.artifacts.normalized_audio_path) if result.artifacts.normalized_audio_path else None
-    _profile, profile_display = build_profile(
+    _profile, profile_display, profile_coverage, profile_provider_decision = build_profile(
         result.analysis_mode,
         metadata,
         result.transcript,
@@ -3626,6 +3899,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         result.quality,
         environment,
         profile_display,
+        profile_coverage,
         speaker_roles,
         content,
         questions,
@@ -3648,7 +3922,10 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
                 status="ready" if result.transcript else "fallback",
                 notes=[],
             ),
+            ProviderDecision(kind="alignment", provider_key="persisted_bundle", used=bool(content.words), cached=False, status="ready" if content.words else "fallback", notes=[]),
             diarization_provider,
+            ProviderDecision(kind="nonverbal_cues", provider_key="persisted_bundle", used=bool(nonverbal_cues), cached=False, status="ready" if nonverbal_cues else "fallback", notes=[]),
+            profile_provider_decision,
             ProviderDecision(
                 kind="role_analysis",
                 provider_key="heuristic",
@@ -3668,6 +3945,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         source_type=str(metadata.get("source_type") or "direct_audio_file"),
         environment=environment,
         profile_display=profile_display,
+        profile_coverage=profile_coverage,
         speaker_roles=speaker_roles,
         diarization=diarization,
         waveform=waveform,
@@ -3679,7 +3957,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         questions=questions,
         signals=signals,
         stage_status=stage_status,
-        readiness_tier=_readiness_tier(result.transcript, diarization),
+        readiness_tier=_readiness_tier(result.transcript, diarization, nonverbal_cues),
     )
 
 
@@ -3799,7 +4077,16 @@ def _signal_status(score: int) -> str:
     return "watch"
 
 
-def _signal_card(key: str, label: str, score: int, summary: str, evidence_items: list[Any], explainability: list[str]) -> SignalCard:
+def _signal_card(
+    key: str,
+    label: str,
+    score: int,
+    summary: str,
+    evidence_items: list[Any],
+    explainability: list[str],
+    *,
+    evidence_class: EvidenceClass = "heuristic_backed",
+) -> SignalCard:
     refs: list[EvidenceRef] = []
     for item in evidence_items[:3]:
         if isinstance(item, QuestionAnalyticsRow):
@@ -3814,6 +4101,7 @@ def _signal_card(key: str, label: str, score: int, summary: str, evidence_items:
         score=max(0, min(100, score)),
         confidence=0.52 if refs else 0.28,
         status=_signal_status(score),
+        evidence_class=evidence_class,
         summary=summary,
         evidence_refs=refs,
         explainability_mask=sorted(set(explainability)),

@@ -241,6 +241,7 @@ def get_session_profile(job_id: str) -> dict[str, Any]:
     return {
         "profile": bundle.profile.model_dump(mode="json"),
         "profile_display": [field.model_dump(mode="json") for field in bundle.profile_display],
+        "profile_coverage": bundle.profile_coverage.model_dump(mode="json"),
     }
 
 

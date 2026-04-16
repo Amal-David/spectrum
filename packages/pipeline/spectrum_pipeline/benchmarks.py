@@ -113,6 +113,7 @@ def benchmark_results(
             status = "missing"
             metrics: list[BenchmarkMetricResult] = []
             notes = list(entry.notes)
+            support_level = "heuristic_backed"
             if dataset_bundles:
                 status = "ready"
                 if task.task_type == "sentence_emotion":
@@ -125,21 +126,33 @@ def benchmark_results(
                     )
                     value = round(benchmark_backed / sentence_count, 3) if sentence_count else 0.0
                     metrics.append(BenchmarkMetricResult(key="macro_f1", label="Macro F1", value=value))
+                    support_level = "benchmark_backed" if benchmark_backed else "heuristic_backed"
                 elif task.task_type == "sentiment":
                     sentiment_count = sum(1 for bundle in dataset_bundles for sentence in bundle.content.sentences if sentence.sentiment_label)
                     total_count = sum(len(bundle.content.sentences) for bundle in dataset_bundles)
                     value = round(sentiment_count / total_count, 3) if total_count else 0.0
                     metrics.append(BenchmarkMetricResult(key="accuracy", label="Accuracy", value=value))
+                    support_level = (
+                        "benchmark_backed"
+                        if any(sentence.source == "benchmark_label" for bundle in dataset_bundles for sentence in bundle.content.sentences)
+                        else "heuristic_backed"
+                    )
                 elif task.task_type == "utterance_emotion":
                     visible_count = sum(1 for bundle in dataset_bundles for sentence in bundle.content.sentences if sentence.display_state in {"visible", "muted"})
                     total_count = sum(len(bundle.content.sentences) for bundle in dataset_bundles)
                     value = round(visible_count / total_count, 3) if total_count else 0.0
                     metrics.append(BenchmarkMetricResult(key="macro_f1", label="Macro F1", value=value))
+                    support_level = (
+                        "model_backed"
+                        if any(sentence.source == "model" for bundle in dataset_bundles for sentence in bundle.content.sentences)
+                        else "heuristic_backed"
+                    )
                 elif task.task_type == "diarization_overlap":
                     overlap_count = sum(len(bundle.diarization.overlap_windows) for bundle in dataset_bundles)
                     segment_count = sum(len(bundle.diarization.segments) for bundle in dataset_bundles)
                     value = round(overlap_count / max(1, segment_count + overlap_count), 3)
                     metrics.append(BenchmarkMetricResult(key="der", label="DER", value=value))
+                    support_level = "benchmark_backed"
                 elif task.task_type == "nonverbal_cue_tagging":
                     cue_count = sum(len(bundle.nonverbal_cues) for bundle in dataset_bundles)
                     visible_count = sum(1 for bundle in dataset_bundles for cue in bundle.nonverbal_cues if cue.display_state in {"visible", "muted"})
@@ -151,6 +164,11 @@ def benchmark_results(
                             BenchmarkMetricResult(key="f1", label="F1", value=coverage),
                         ]
                     )
+                    support_level = (
+                        "benchmark_backed"
+                        if any(cue.source == "benchmark_label" for bundle in dataset_bundles for cue in bundle.nonverbal_cues)
+                        else "heuristic_backed"
+                    )
             else:
                 status = "skipped" if entry.status == "gated" else "missing"
                 notes.append("No imported benchmark-backed sessions are available for this dataset yet.")
@@ -159,6 +177,7 @@ def benchmark_results(
             regressed = any(metric.regressed for metric in metrics)
             if regressed:
                 notes.append("Current snapshot regressed against the previous saved benchmark run.")
+            notes.append(f"Support level: {support_level.replace('_', ' ')}.")
             results.append(
                 BenchmarkResult(
                     benchmark_id=benchmark_id,
@@ -169,6 +188,7 @@ def benchmark_results(
                     metrics=metrics,
                     run_timestamp=now if dataset_bundles else None,
                     model_stack=stack,
+                    support_level=support_level,
                     regressed=regressed,
                     notes=notes,
                 )

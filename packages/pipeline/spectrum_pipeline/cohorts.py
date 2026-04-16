@@ -128,6 +128,26 @@ def _session_row(bundle: SessionBundle) -> CohortSessionRow:
     )
 
 
+def _cue_attribution_rate(bundle: SessionBundle) -> float:
+    vocal_cues = [cue for cue in bundle.nonverbal_cues if cue.family == "vocal_sound" and cue.display_state in {"visible", "muted"}]
+    if not vocal_cues:
+        return 0.0
+    return sum(1 for cue in vocal_cues if cue.attribution_state == "strong") / len(vocal_cues)
+
+
+def _profile_visibility_rate(bundle: SessionBundle) -> float:
+    displayable = [field for field in bundle.profile_display if field.display_state != "unavailable"]
+    if not displayable:
+        return 0.0
+    return sum(1 for field in displayable if field.display_state in {"visible", "muted"}) / len(displayable)
+
+
+def _benchmark_signal_rate(bundle: SessionBundle) -> float:
+    if not bundle.signals:
+        return 0.0
+    return sum(1 for signal in bundle.signals if signal.evidence_class == "benchmark_backed") / len(bundle.signals)
+
+
 def cohort_summary(bundles: list[SessionBundle], filters: CohortFilters | None = None) -> CohortSummary:
     filters = filters or CohortFilters()
     matched = filter_bundles(bundles, filters)
@@ -137,6 +157,9 @@ def cohort_summary(bundles: list[SessionBundle], filters: CohortFilters | None =
     frustration_values = [_signal_value(bundle, "frustration_risk") for bundle in matched]
     snr_values = [bundle.quality.avg_snr_db for bundle in matched if bundle.quality.avg_snr_db is not None]
     usable_rate = (sum(1 for bundle in matched if bundle.quality.is_usable) / len(matched) * 100) if matched else 0.0
+    cue_attribution_values = [_cue_attribution_rate(bundle) * 100 for bundle in matched]
+    profile_visibility_values = [_profile_visibility_rate(bundle) * 100 for bundle in matched]
+    benchmark_signal_values = [_benchmark_signal_rate(bundle) * 100 for bundle in matched]
 
     emotion_counts = Counter(
         sentence.emotion_label
@@ -155,6 +178,9 @@ def cohort_summary(bundles: list[SessionBundle], filters: CohortFilters | None =
             CohortKPI(key="friction_avg", label="Human friction", value=round(mean(friction_values), 1) if friction_values else 0.0),
             CohortKPI(key="rapport_avg", label="Rapport", value=round(mean(rapport_values), 1) if rapport_values else 0.0),
             CohortKPI(key="frustration_avg", label="Frustration risk", value=round(mean(frustration_values), 1) if frustration_values else 0.0),
+            CohortKPI(key="cue_attribution_rate", label="Cue attribution coverage", value=round(mean(cue_attribution_values), 1) if cue_attribution_values else 0.0, unit="%"),
+            CohortKPI(key="profile_visibility_rate", label="Profile visibility rate", value=round(mean(profile_visibility_values), 1) if profile_visibility_values else 0.0, unit="%"),
+            CohortKPI(key="benchmark_signal_rate", label="Benchmark-backed signals", value=round(mean(benchmark_signal_values), 1) if benchmark_signal_values else 0.0, unit="%"),
         ],
         phase_summaries=phase_summaries(matched),
         dominant_emotions=[
@@ -196,6 +222,29 @@ def distributions(bundles: list[SessionBundle], filters: CohortFilters | None = 
     source_counter = Counter(bundle.session.source_type for bundle in matched)
     duration_counter = Counter(_duration_band(bundle.session.duration_sec) for bundle in matched)
     readiness_counter = Counter(bundle.session.readiness_tier for bundle in matched)
+    provider_counter = Counter(
+        decision.provider_key
+        for bundle in matched
+        for decision in bundle.diagnostics.provider_decisions
+        if decision.used
+    )
+    cue_attribution_counter = Counter(
+        cue.attribution_state
+        for bundle in matched
+        for cue in bundle.nonverbal_cues
+        if cue.display_state in {"visible", "muted"}
+    )
+    profile_visibility_counter = Counter(
+        field.display_state
+        for bundle in matched
+        for field in bundle.profile_display
+        if field.display_state != "unavailable"
+    )
+    signal_evidence_counter = Counter(
+        signal.evidence_class
+        for bundle in matched
+        for signal in bundle.signals
+    )
     dominant_emotions = Counter(
         sentence.emotion_label
         for bundle in matched
@@ -222,6 +271,26 @@ def distributions(bundles: list[SessionBundle], filters: CohortFilters | None = 
             key="readiness_mix",
             label="Readiness tiers",
             items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in readiness_counter.items()],
+        ),
+        CohortDistribution(
+            key="provider_mix",
+            label="Provider mix",
+            items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in provider_counter.items()],
+        ),
+        CohortDistribution(
+            key="cue_attribution_mix",
+            label="Cue attribution",
+            items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in cue_attribution_counter.items()],
+        ),
+        CohortDistribution(
+            key="profile_visibility_mix",
+            label="Profile visibility",
+            items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in profile_visibility_counter.items()],
+        ),
+        CohortDistribution(
+            key="signal_evidence_mix",
+            label="Signal evidence",
+            items=[CohortDistributionItem(key=key, label=key.replace("_", " "), value=value, value_type="count") for key, value in signal_evidence_counter.items()],
         ),
         CohortDistribution(
             key="dominant_human_emotions",

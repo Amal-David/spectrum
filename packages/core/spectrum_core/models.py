@@ -14,9 +14,10 @@ SignalStatus = Literal["healthy", "watch", "risk"]
 PredictionSource = Literal["model", "heuristic", "metadata_hint", "manual_override", "benchmark_label", "unavailable"]
 DisplayState = Literal["visible", "muted", "hidden", "unavailable"]
 SpeakerRole = Literal["human", "ai", "unknown"]
-ProviderKind = Literal["transcription", "diarization", "role_analysis"]
+ProviderKind = Literal["transcription", "diarization", "role_analysis", "alignment", "nonverbal_cues", "profile"]
 DistributionValueType = Literal["count", "average", "percent"]
 BenchmarkTaskType = Literal["sentence_emotion", "utterance_emotion", "sentiment", "diarization_overlap", "nonverbal_cue_tagging"]
+EvidenceClass = Literal["benchmark_backed", "model_backed", "heuristic_backed", "metadata_backed"]
 
 
 class DatasetReference(BaseModel):
@@ -206,6 +207,13 @@ class ProfileField(BaseModel):
     details: dict[str, float | str] = Field(default_factory=dict)
 
 
+class ProfileCoverageSummary(BaseModel):
+    model_backed_fields: list[str] = Field(default_factory=list)
+    metadata_only_fields: list[str] = Field(default_factory=list)
+    hidden_fields: list[str] = Field(default_factory=list)
+    unavailable_fields: list[str] = Field(default_factory=list)
+
+
 class SentenceEmotionSpan(BaseModel):
     sentence_id: str
     speaker_id: str
@@ -312,6 +320,7 @@ class NonverbalCue(BaseModel):
     confidence: float = 0.0
     source: PredictionSource = "unavailable"
     display_state: DisplayState = "unavailable"
+    attribution_state: Literal["strong", "muted", "unassigned"] = "unassigned"
     speaker_id: str | None = None
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
     explainability_mask: list[str] = Field(default_factory=list)
@@ -383,6 +392,7 @@ class SignalCard(BaseModel):
     score: int
     confidence: float = 0.0
     status: SignalStatus = "watch"
+    evidence_class: EvidenceClass = "heuristic_backed"
     summary: str
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
     explainability_mask: list[str] = Field(default_factory=list)
@@ -433,6 +443,7 @@ class SessionBundle(BaseModel):
     environment: EnvironmentSummary = Field(default_factory=EnvironmentSummary)
     profile: ProfileSummary = Field(default_factory=ProfileSummary)
     profile_display: list[ProfileField] = Field(default_factory=list)
+    profile_coverage: ProfileCoverageSummary = Field(default_factory=ProfileCoverageSummary)
     speaker_roles: SpeakerRoleSummary = Field(default_factory=SpeakerRoleSummary)
     diarization: DiarizationSummary = Field(default_factory=DiarizationSummary)
     waveform: WaveformArtifact = Field(default_factory=WaveformArtifact)
@@ -652,5 +663,6 @@ class BenchmarkResult(BaseModel):
     metrics: list[BenchmarkMetricResult] = Field(default_factory=list)
     run_timestamp: str | None = None
     model_stack: list[str] = Field(default_factory=list)
+    support_level: EvidenceClass = "heuristic_backed"
     regressed: bool = False
     notes: list[str] = Field(default_factory=list)

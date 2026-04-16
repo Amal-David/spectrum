@@ -56,6 +56,8 @@ def test_analyzer_emits_profile_metrics_and_events(tmp_path: Path) -> None:
     assert "questions" in bundle_payload
     assert "signals" in bundle_payload
     assert bundle_payload["profile_display"]
+    assert "profile_coverage" in bundle_payload
+    assert "hidden_fields" in bundle_payload["profile_coverage"]
     assert bundle_payload["content"]["sentences"]
     assert bundle_payload["content"]["view_summary"]["sentence_count"] >= 1
     assert bundle_payload["diarization"]["readiness_state"] == "fallback"
@@ -188,9 +190,11 @@ def test_uploaded_sessions_gate_speaker_attribution_without_strong_diarization(t
     laugh_cue = next(cue for cue in bundle_payload["nonverbal_cues"] if cue["type"] == "laugh")
     assert laugh_cue["display_state"] == "muted"
     assert laugh_cue["speaker_id"] is None
+    assert laugh_cue["attribution_state"] == "unassigned"
     assert "speaker_attribution_blocked" in laugh_cue["explainability_mask"]
     speaker_track = next(track for track in bundle_payload["timeline_tracks"] if track["track_id"] == "speaker-lanes")
     assert speaker_track["status"] == "fallback"
+    assert bundle_payload["session"]["readiness_tier"] == "partial"
 
 
 def test_textual_nonverbal_cues_surface_for_uploaded_audio(tmp_path: Path) -> None:
@@ -274,6 +278,7 @@ def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path
     human_sentence = next(sentence for sentence in bundle_payload["content"]["sentences"] if sentence["speaker_role"] == "human")
     assert human_sentence["source"] == "model"
     assert any(signal["key"] == "hesitation" for signal in bundle_payload["signals"])
+    assert all("evidence_class" in signal for signal in bundle_payload["signals"])
     assert bundle_payload["metrics"]["talk_ratio"]["value"] <= 1
 
 
@@ -300,6 +305,7 @@ def test_local_asr_is_default_and_records_readiness(monkeypatch: Any, tmp_path: 
     assert bundle_payload["session"]["readiness_tier"] in {"partial", "transcript_only"}
     provider_keys = [item["provider_key"] for item in bundle_payload["diagnostics"]["provider_decisions"]]
     assert provider_keys[0] == "faster_whisper"
+    assert {"alignment", "nonverbal_cues", "profile"}.issubset({item["kind"] for item in bundle_payload["diagnostics"]["provider_decisions"]})
     assert "oss_first_local_pipeline" in bundle_payload["diagnostics"]["fallback_logic"]
 
 
@@ -377,6 +383,7 @@ def test_benchmark_results_compare_against_previous_snapshot() -> None:
     ]
     compared = benchmark_results(bundles, previous_results=previous)
     assert any(metric.delta is not None for result in compared for metric in result.metrics)
+    assert all(result.support_level in {"benchmark_backed", "model_backed", "heuristic_backed", "metadata_backed"} for result in compared)
 
 
 def test_manual_role_override_rebuilds_bundle(tmp_path: Path) -> None:

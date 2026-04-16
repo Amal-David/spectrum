@@ -174,7 +174,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
         speakers = speakers_by_session.get(job_id, [])
         events = events_by_session.get(job_id, [])
         questions = questions_by_session.get(job_id, [])
-        profile, profile_display = build_profile(
+        profile, profile_display, profile_coverage, profile_provider_decision = build_profile(
             "conversation_analytics",
             metadata,
             transcript,
@@ -206,7 +206,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
             adapters=adapters,
             confidence_caveats=["demo_pack_synthetic"],
             degraded_reasons=[],
-            provider_decisions=[diarization_provider],
+            provider_decisions=[diarization_provider, profile_provider_decision],
             fallback_logic=["synthetic_session_import"],
         )
         source = DatasetReference(
@@ -257,6 +257,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
             source_type="demo_pack_zip",
             environment=environment,
             profile_display=profile_display,
+            profile_coverage=profile_coverage,
             speaker_roles=speaker_roles,
             diarization=diarization,
             waveform=waveform,
@@ -273,6 +274,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
                 quality,
                 environment,
                 profile_display,
+                profile_coverage,
                 speaker_roles,
                 content,
                 questions,
@@ -291,6 +293,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
             metadata,
             quality,
             profile_display,
+            profile_coverage,
             diarization,
             waveform,
             spectrogram,

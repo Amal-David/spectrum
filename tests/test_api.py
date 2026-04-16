@@ -82,6 +82,7 @@ def test_session_create_upload_and_process_flow(tmp_path: Path) -> None:
     profile = client.get(f"/api/v1/sessions/{job_id}/profile")
     assert profile.status_code == 200
     assert profile.json()["profile_display"]
+    assert "profile_coverage" in profile.json()
 
     roles = client.get(f"/api/v1/sessions/{job_id}/roles")
     assert roles.status_code == 200
@@ -214,3 +215,4 @@ def test_cohort_and_benchmark_endpoints_respond(tmp_path: Path) -> None:
     assert payload["registry"]
     assert payload["results"]
     assert all("regressed" in result for result in payload["results"])
+    assert all("support_level" in result for result in payload["results"])

@@ -7,6 +7,7 @@ type ReadinessTier = "full" | "partial" | "transcript_only" | "blocked";
 type DisplayState = "visible" | "muted" | "hidden" | "unavailable";
 type PredictionSource = "model" | "heuristic" | "metadata_hint" | "manual_override" | "benchmark_label" | "unavailable";
 type SpeakerRole = "human" | "ai" | "unknown";
+type EvidenceClass = "benchmark_backed" | "model_backed" | "heuristic_backed" | "metadata_backed";
 
 export type EvidenceRef = {
   kind: string;
@@ -94,6 +95,12 @@ export type SessionBundle = {
     warning_flags: string[];
     details?: Record<string, string | number>;
   }>;
+  profile_coverage: {
+    model_backed_fields: string[];
+    metadata_only_fields: string[];
+    hidden_fields: string[];
+    unavailable_fields: string[];
+  };
   speaker_roles: {
     primary_human_speaker_id?: string | null;
     primary_ai_speaker_id?: string | null;
@@ -155,6 +162,7 @@ export type SessionBundle = {
     confidence: number;
     source: PredictionSource;
     display_state: DisplayState;
+    attribution_state?: "strong" | "muted" | "unassigned";
     speaker_id?: string | null;
     evidence_refs: EvidenceRef[];
     explainability_mask: string[];
@@ -256,6 +264,7 @@ export type SessionBundle = {
     score: number;
     confidence: number;
     status: SignalStatus;
+    evidence_class?: EvidenceClass;
     summary: string;
     evidence_refs: EvidenceRef[];
     explainability_mask: string[];
@@ -282,7 +291,7 @@ export type CohortSummary = {
 
 export type BenchmarkSnapshot = {
   registry: Array<{ benchmark_id: string; dataset_id: string; title: string; status: string; tasks: Array<{ task_type: string; label: string; metric_keys: string[] }>; notes: string[] }>;
-  results: Array<{ benchmark_id: string; dataset_id: string; task_type: string; status: string; regressed?: boolean; metrics: Array<{ key: string; label: string; value: number; unit?: string | null; previous_value?: number | null; delta?: number | null; regressed?: boolean }>; notes: string[] }>;
+  results: Array<{ benchmark_id: string; dataset_id: string; task_type: string; status: string; regressed?: boolean; support_level?: EvidenceClass; metrics: Array<{ key: string; label: string; value: number; unit?: string | null; previous_value?: number | null; delta?: number | null; regressed?: boolean }>; notes: string[] }>;
 };
 
 export type DatasetOverview = {
@@ -407,6 +416,12 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       lang_mix: { label: "unknown", english_ratio: 0 },
     },
     profile_display: rawBundle?.profile_display ?? [],
+    profile_coverage: rawBundle?.profile_coverage ?? {
+      model_backed_fields: [],
+      metadata_only_fields: [],
+      hidden_fields: [],
+      unavailable_fields: [],
+    },
     speaker_roles: rawBundle?.speaker_roles ?? {
       primary_human_speaker_id: null,
       primary_ai_speaker_id: null,
@@ -435,7 +450,10 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       notes: rawBundle?.spectrogram?.notes ?? [],
     },
     prosody_tracks: rawBundle?.prosody_tracks ?? [],
-    nonverbal_cues: rawBundle?.nonverbal_cues ?? [],
+    nonverbal_cues: (rawBundle?.nonverbal_cues ?? []).map((cue: any) => ({
+      ...cue,
+      attribution_state: cue?.attribution_state ?? (cue?.speaker_id ? "strong" : cue?.display_state === "muted" ? "muted" : "unassigned"),
+    })),
     timeline_tracks: rawBundle?.timeline_tracks ?? [],
     speakers: (rawBundle?.speakers ?? []).map((speaker: any) => ({
       ...speaker,
@@ -467,7 +485,10 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
         emotion_labels: rawBundle?.content?.view_summary?.emotion_labels ?? [],
       },
     },
-    signals: rawBundle?.signals ?? [],
+    signals: (rawBundle?.signals ?? []).map((signal: any) => ({
+      ...signal,
+      evidence_class: signal?.evidence_class ?? "heuristic_backed",
+    })),
     metrics: rawBundle?.metrics ?? {},
     diagnostics: {
       enabled_comparisons: rawBundle?.diagnostics?.enabled_comparisons ?? [],
@@ -837,6 +858,23 @@ function phaseEmotion(bundle: SessionBundle, startRatio: number, endRatio: numbe
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unlabeled";
 }
 
+function cueAttributionRate(bundle: SessionBundle) {
+  const vocalCues = bundle.nonverbal_cues.filter((cue) => cue.family === "vocal_sound" && cue.display_state !== "hidden");
+  if (!vocalCues.length) return 0;
+  return vocalCues.filter((cue) => cue.attribution_state === "strong").length / vocalCues.length;
+}
+
+function profileVisibilityRate(bundle: SessionBundle) {
+  if (!bundle.profile_display.length) return 0;
+  const visible = bundle.profile_display.filter((field) => field.display_state === "visible" || field.display_state === "muted").length;
+  return visible / bundle.profile_display.length;
+}
+
+function benchmarkSignalRate(bundle: SessionBundle) {
+  if (!bundle.signals.length) return 0;
+  return bundle.signals.filter((signal) => signal.evidence_class === "benchmark_backed").length / bundle.signals.length;
+}
+
 function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
   const snrValues = bundles.map((bundle) => bundle.quality.avg_snr_db ?? 0);
   const trendsMap = new Map<string, SessionBundle[]>();
@@ -845,6 +883,9 @@ function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
     trendsMap.set(key, [...(trendsMap.get(key) ?? []), bundle]);
   }
   const emotionCounts = new Map<string, number>();
+  const cueAttributionValues = bundles.map((bundle) => cueAttributionRate(bundle) * 100);
+  const profileVisibilityValues = bundles.map((bundle) => profileVisibilityRate(bundle) * 100);
+  const benchmarkSignalValues = bundles.map((bundle) => benchmarkSignalRate(bundle) * 100);
   for (const bundle of bundles) {
     for (const sentence of bundle.content.sentences) {
       if (sentence.speaker_role !== "human" || sentence.emotion_label === "unlabeled") continue;
@@ -870,6 +911,28 @@ function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
       value,
       value_type: "count",
     }));
+  const providerMix = Array.from(
+    bundles.reduce((acc, bundle) => {
+      for (const decision of bundle.diagnostics.provider_decisions ?? []) {
+        const key = `${decision.kind}:${decision.provider_key}`;
+        acc.set(key, (acc.get(key) ?? 0) + 1);
+      }
+      return acc;
+    }, new Map<string, number>())
+  ).map(([key, value]) => ({ key, label: key.replaceAll("_", " "), value, value_type: "count" }));
+  const cueAttributionMix = countDistribution(
+    bundles.flatMap((bundle) =>
+      bundle.nonverbal_cues
+        .filter((cue) => cue.family === "vocal_sound" && cue.display_state !== "hidden")
+        .map((cue) => cue.attribution_state ?? "unassigned")
+    )
+  );
+  const profileVisibilityMix = countDistribution(
+    bundles.flatMap((bundle) => bundle.profile_display.map((field) => field.display_state))
+  );
+  const signalEvidenceMix = countDistribution(
+    bundles.flatMap((bundle) => bundle.signals.map((signal) => signal.evidence_class ?? "heuristic_backed"))
+  );
   return {
     kpis: [
       { key: "run_count", label: "Run count", value: bundles.length },
@@ -879,6 +942,9 @@ function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
       { key: "friction_avg", label: "Human friction", value: averageSignal(bundles, "friction") },
       { key: "rapport_avg", label: "Rapport", value: averageSignal(bundles, "rapport") },
       { key: "frustration_avg", label: "Frustration risk", value: averageSignal(bundles, "frustration_risk") },
+      { key: "cue_attribution_rate", label: "Cue attribution coverage", value: cueAttributionValues.length ? cueAttributionValues.reduce((sum, value) => sum + value, 0) / cueAttributionValues.length : 0, unit: "%" },
+      { key: "profile_visibility_rate", label: "Profile visibility", value: profileVisibilityValues.length ? profileVisibilityValues.reduce((sum, value) => sum + value, 0) / profileVisibilityValues.length : 0, unit: "%" },
+      { key: "benchmark_signal_rate", label: "Benchmark-backed signals", value: benchmarkSignalValues.length ? benchmarkSignalValues.reduce((sum, value) => sum + value, 0) / benchmarkSignalValues.length : 0, unit: "%" },
     ],
     trends: trendBuckets,
     distributions: [
@@ -886,6 +952,10 @@ function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
       { key: "source_mix", label: "Source mix", items: countDistribution(bundles.map((bundle) => bundle.session.source_type)) },
       { key: "duration_mix", label: "Duration bands", items: countDistribution(bundles.map((bundle) => durationBand(bundle))) },
       { key: "readiness_mix", label: "Readiness tiers", items: countDistribution(bundles.map((bundle) => bundle.session.readiness_tier ?? "blocked")) },
+      { key: "provider_mix", label: "Provider mix", items: providerMix },
+      { key: "cue_attribution_mix", label: "Cue attribution", items: cueAttributionMix },
+      { key: "profile_visibility_mix", label: "Profile visibility", items: profileVisibilityMix },
+      { key: "signal_evidence_mix", label: "Signal evidence", items: signalEvidenceMix },
       {
         key: "dominant_human_emotions",
         label: "Dominant human emotions",
@@ -963,28 +1033,40 @@ function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
     const matched = bundles.filter((bundle) => bundle.session.dataset_id === entry.dataset_id);
     return entry.tasks.map((task) => {
       const hasData = matched.length > 0;
+      let supportLevel: EvidenceClass = "heuristic_backed";
       let metrics: Array<{ key: string; label: string; value: number }> = [];
       if (hasData && task.task_type === "sentence_emotion") {
         const sentenceCount = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
         const benchmarkCount = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.source === "benchmark_label").length, 0);
         metrics = [{ key: "macro_f1", label: "Macro F1", value: sentenceCount ? benchmarkCount / sentenceCount : 0 }];
+        supportLevel = benchmarkCount ? "benchmark_backed" : "heuristic_backed";
       } else if (hasData && task.task_type === "sentiment") {
         const total = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
         const labeled = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.sentiment_label).length, 0);
         metrics = [{ key: "accuracy", label: "Accuracy", value: total ? labeled / total : 0 }];
+        supportLevel = matched.some((bundle) => bundle.content.sentences.some((sentence) => sentence.source === "benchmark_label"))
+          ? "benchmark_backed"
+          : "heuristic_backed";
       } else if (hasData && task.task_type === "utterance_emotion") {
         const total = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
         const visible = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.display_state !== "hidden").length, 0);
         metrics = [{ key: "macro_f1", label: "Macro F1", value: total ? visible / total : 0 }];
+        supportLevel = matched.some((bundle) => bundle.content.sentences.some((sentence) => sentence.source === "model"))
+          ? "model_backed"
+          : "heuristic_backed";
       } else if (hasData && task.task_type === "diarization_overlap") {
         const segments = matched.reduce((sum, bundle) => sum + bundle.diarization.segments.length, 0);
         const overlaps = matched.reduce((sum, bundle) => sum + bundle.diarization.overlap_windows.length, 0);
         metrics = [{ key: "der", label: "DER", value: overlaps / Math.max(1, segments + overlaps) }];
+        supportLevel = "benchmark_backed";
       } else if (hasData && task.task_type === "nonverbal_cue_tagging") {
         const cues = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.length, 0);
         const visible = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.filter((cue) => cue.display_state !== "hidden").length, 0);
         const ratio = cues ? visible / cues : 0;
         metrics = [{ key: "precision", label: "Precision", value: ratio }, { key: "recall", label: "Recall", value: ratio }, { key: "f1", label: "F1", value: ratio }];
+        supportLevel = matched.some((bundle) => bundle.nonverbal_cues.some((cue) => cue.source === "benchmark_label"))
+          ? "benchmark_backed"
+          : "heuristic_backed";
       }
       return {
         benchmark_id: `${entry.dataset_id}:${task.task_type}`,
@@ -992,8 +1074,9 @@ function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
         task_type: task.task_type,
         status: hasData ? "ready" : entry.status === "gated" ? "skipped" : "missing",
         regressed: false,
+        support_level: supportLevel,
         metrics,
-        notes: hasData ? entry.notes : [...entry.notes, "No imported benchmark-backed sessions are available yet."],
+        notes: hasData ? [...entry.notes, `Support level: ${supportLevel.replaceAll("_", " ")}.`] : [...entry.notes, "No imported benchmark-backed sessions are available yet."],
       };
     });
   });
