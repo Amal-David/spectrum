@@ -859,7 +859,9 @@ function phaseEmotion(bundle: SessionBundle, startRatio: number, endRatio: numbe
 }
 
 function cueAttributionRate(bundle: SessionBundle) {
-  const vocalCues = bundle.nonverbal_cues.filter((cue) => cue.family === "vocal_sound" && cue.display_state !== "hidden");
+  const vocalCues = bundle.nonverbal_cues.filter(
+    (cue) => cue.family === "vocal_sound" && (cue.display_state === "visible" || cue.display_state === "muted"),
+  );
   if (!vocalCues.length) return 0;
   return vocalCues.filter((cue) => cue.attribution_state === "strong").length / vocalCues.length;
 }
