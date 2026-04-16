@@ -30,7 +30,7 @@ That foundation should work across:
 
 ## Current state
 
-Spectrum is already a real working prototype, not just a concept.
+Spectrum is an open-source call analytics SDK and UI for teams that want structured voice intelligence without building the full stack from scratch.
 
 Today the repo includes:
 
@@ -47,81 +47,65 @@ The current product direction is:
 - visible explainability masks and provenance
 - open, inspectable outputs instead of opaque one-score APIs
 
-## What is already implemented
+## Capability status
 
-### Platform shape
+### Core platform
 
-- canonical session bundles with quality, environment, turns, events, questions, signals, transcript spans, profile fields, diarization, waveform, spectrogram, and timeline tracks
-- persisted run artifacts under `runs/<session_id>/...`
-- dataset and importer support for demo-pack and curated local materialized datasets
+| Area | Status | Notes |
+| --- | --- | --- |
+| Canonical session bundle | `✓ Done` | Quality, environment, turns, events, questions, signals, transcript spans, diarization, waveform, spectrogram, and timeline tracks are modeled in one shared schema. |
+| Persisted run artifacts | `✓ Done` | Analysis outputs are written under `runs/<session_id>/...` with `bundle.json` as the main read model. |
+| Dataset and demo importers | `✓ Done` | Includes demo-pack support and curated local materialized dataset import paths. |
+| Package structure | `✓ Done` | Split across `core`, `pipeline`, `api`, and `dashboard`. |
 
-### Analysis pipeline
+### Analysis capabilities
 
-- audio normalization and telephony render generation
-- quality scoring, SNR/noise heuristics, and explainability flags
-- turn and structure derivation
-- transcript span generation with sentence and token overlays
-- confidence-gated profile display
-- waveform, spectrogram, prosody tracks, and non-verbal cue artifacts
-- human-vs-AI role assignment with manual override support
-- OpenAI-assisted analysis path plus local fallback behavior
+| Capability | Status | Notes |
+| --- | --- | --- |
+| Audio normalization | `✓ Done` | Includes normalized and telephony-rendered audio artifacts. |
+| Quality scoring | `✓ Done` | SNR, noise, clipping, VAD issues, and explainability flags are supported. |
+| Turn and structure analysis | `✓ Done` | Turns, pauses, overlaps, events, and response timing are part of the pipeline. |
+| Transcript sentence and token spans | `✓ Done` | Sentence-level and token-level transcript artifacts are supported. |
+| Human vs AI speaker roles | `✓ Done` | Includes automatic role assignment plus manual override support. |
+| Waveform and spectrogram views | `✓ Done` | Both are rendered in the session workspace. |
+| Prosody tracks and cue artifacts | `✓ Done` | Pitch, energy, speaking-rate tracks, and non-verbal cue outputs are present. |
+| Uploaded-audio diarization strength | `~ In progress` | Works best when stronger adapters are available; degraded mode still needs improvement. |
+| Non-verbal attribution on arbitrary uploads | `~ In progress` | Stronger on benchmark/demo-backed sessions than on all uploaded audio. |
+| Accent / age / profile depth | `~ In progress` | Confidence-gated today; several fields remain intentionally conservative. |
+| Emotion and behavior benchmarking depth | `~ In progress` | A number of signals still rely on heuristics or light model assistance. |
 
 ### Product surface
 
-- upload and async analysis progress flow
-- session overview and compare screens
-- transcript-first and waveform-first session workspace
-- speaker-role controls
-- role-aware transcript filtering
-- session APIs for bundle, transcript, profile, roles, waveform, spectrogram, prosody, diarization, and cues
+| Surface | Status | Notes |
+| --- | --- | --- |
+| Upload and async processing flow | `✓ Done` | Includes session creation, upload, processing, and progress reporting. |
+| Overview and compare screens | `✓ Done` | Dashboard supports session browsing and side-by-side comparison. |
+| Session workspace | `✓ Done` | Transcript-first and waveform-first review experiences are both present. |
+| Role-aware transcript filtering | `✓ Done` | Human-only, Human + AI, and AI context views are supported. |
+| Session APIs | `✓ Done` | Bundle, transcript, profile, roles, waveform, spectrogram, prosody, diarization, and cue endpoints exist. |
+| Public SDK ergonomics | `~ In progress` | Internal interfaces are strong, but the external developer-facing SDK surface is not finalized yet. |
+| Hosted / multi-tenant product layer | `○ Not done yet` | No auth, tenancy, or managed cloud product layer yet. |
+| Privacy / governance layer | `○ Not done yet` | No finalized policy or enterprise controls yet. |
 
-### Validation
+### Validation and research
 
-- Python tests for pipeline and API behavior
-- dashboard buildable from the repo workspace
+| Area | Status | Notes |
+| --- | --- | --- |
+| Python API and pipeline tests | `✓ Done` | Core workflow behavior is covered by tests. |
+| Dashboard buildability | `✓ Done` | The UI builds from the workspace. |
+| Cross-region and cross-language calibration | `○ Not done yet` | Still needs broader evaluation and grounding. |
+| Long-call cohort analytics | `~ In progress` | The foundation is there, but the aggregate analytics layer needs to go further. |
+| Benchmark breadth | `~ In progress` | Coverage exists, but is not yet comprehensive. |
 
-## What is not done yet
+## Near-term roadmap
 
-Spectrum is still early, and several important parts remain prototype-grade or incomplete.
-
-### Model depth
-
-- diarization for uploaded audio still depends on optional stronger adapters
-- non-verbal cue attribution is strongest for benchmark/demo data and weaker for arbitrary uploads
-- profile outputs such as accent and age-band are still conservative and often gated or unavailable
-- many emotion and behavior signals remain heuristic or lightly model-assisted rather than deeply benchmarked
-
-### Product maturity
-
-- no polished package distribution story yet
-- no stable SDK API surface for external developers
-- no auth, multi-tenant storage, hosted service, or production deployment story
-- no finalized data governance, privacy posture, or enterprise controls
-
-### Research coverage
-
-- cross-region, cross-language, and cross-demographic calibration is not done
-- long-call analytics and aggregate cohort analytics are still early
-- benchmark coverage is partial rather than comprehensive
-
-## What should happen soon
-
-The next useful milestones are:
-
-1. Harden the uploaded-audio path.
-   Ship a stronger default transcription + diarization stack and improve degraded-mode messaging.
-
-2. Stabilize the SDK surface.
-   Turn the current canonical bundle and pipeline interfaces into a documented developer-facing API.
-
-3. Improve signal credibility.
-   Replace more heuristics with stronger adapters, better benchmark validation, and clearer confidence calibration.
-
-4. Expand aggregate analytics.
-   Make the overview feel more like a true voice analytics console across many sessions, not just single-session inspection.
-
-5. Document the roadmap.
-   Separate what Spectrum guarantees today from what is experimental.
+| Priority | Area | What comes next |
+| --- | --- | --- |
+| 1 | Uploaded-audio path | Harden default transcription + diarization and improve degraded-mode behavior. |
+| 2 | SDK surface | Turn the current bundle and pipeline contracts into a documented developer-facing SDK. |
+| 3 | Signal credibility | Replace more heuristics with stronger adapters, benchmarks, and clearer calibration. |
+| 4 | Aggregate analytics | Push the overview toward a fuller multi-session voice analytics console. |
+| 5 | Documentation | Publish a clearer roadmap and separate stable surfaces from experimental ones. |
 
 ## Architecture
 
@@ -182,14 +166,13 @@ The root `.gitignore` is configured to keep those local-only artifacts out of gi
 
 Spectrum is MIT licensed.
 
-The project is meant to grow into a proper open source voice analytics foundation:
+The project is meant to grow into a proper open-source voice analytics foundation:
 
 - clear canonical schemas
 - transparent outputs
 - reusable ingestion and analysis building blocks
 - a lightweight but useful inspection UI
-
-If you are evaluating the project today, treat it as a serious open prototype: already useful for demos, exploration, and foundational product work, but not yet the finished production voice analytics stack described by the full vision.
+- a practical starting point for teams building interview, support, research, and voice AI analytics products
 
 ## License
 
