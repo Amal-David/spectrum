@@ -9,10 +9,15 @@ from .constants import SCHEMA_VERSION
 AnalysisMode = Literal["voice_profile", "conversation_analytics", "full"]
 SessionStatus = Literal["created", "uploaded", "queued", "processing", "completed", "failed"]
 StageState = Literal["ready", "fallback", "blocked", "missing"]
+ReadinessTier = Literal["full", "partial", "transcript_only", "blocked"]
 SignalStatus = Literal["healthy", "watch", "risk"]
 PredictionSource = Literal["model", "heuristic", "metadata_hint", "manual_override", "benchmark_label", "unavailable"]
 DisplayState = Literal["visible", "muted", "hidden", "unavailable"]
 SpeakerRole = Literal["human", "ai", "unknown"]
+ProviderKind = Literal["transcription", "diarization", "role_analysis", "alignment", "nonverbal_cues", "profile"]
+DistributionValueType = Literal["count", "average", "percent"]
+BenchmarkTaskType = Literal["sentence_emotion", "utterance_emotion", "sentiment", "diarization_overlap", "nonverbal_cue_tagging"]
+EvidenceClass = Literal["benchmark_backed", "model_backed", "heuristic_backed", "metadata_backed"]
 
 
 class DatasetReference(BaseModel):
@@ -169,6 +174,8 @@ class Diagnostics(BaseModel):
     license_warnings: list[str] = Field(default_factory=list)
     confidence_caveats: list[str] = Field(default_factory=list)
     fallback_logic: list[str] = Field(default_factory=list)
+    degraded_reasons: list[str] = Field(default_factory=list)
+    provider_decisions: list["ProviderDecision"] = Field(default_factory=list)
 
 
 class ProfileSummary(BaseModel):
@@ -185,6 +192,7 @@ class WordTimestamp(BaseModel):
     end_ms: int
     confidence: float = 0.0
     source: str = "heuristic"
+    speaker_id: str | None = None
 
 
 class ProfileField(BaseModel):
@@ -197,6 +205,13 @@ class ProfileField(BaseModel):
     summary: str | None = None
     warning_flags: list[str] = Field(default_factory=list)
     details: dict[str, float | str] = Field(default_factory=dict)
+
+
+class ProfileCoverageSummary(BaseModel):
+    model_backed_fields: list[str] = Field(default_factory=list)
+    metadata_only_fields: list[str] = Field(default_factory=list)
+    hidden_fields: list[str] = Field(default_factory=list)
+    unavailable_fields: list[str] = Field(default_factory=list)
 
 
 class SentenceEmotionSpan(BaseModel):
@@ -305,6 +320,7 @@ class NonverbalCue(BaseModel):
     confidence: float = 0.0
     source: PredictionSource = "unavailable"
     display_state: DisplayState = "unavailable"
+    attribution_state: Literal["strong", "muted", "unassigned"] = "unassigned"
     speaker_id: str | None = None
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
     explainability_mask: list[str] = Field(default_factory=list)
@@ -376,6 +392,7 @@ class SignalCard(BaseModel):
     score: int
     confidence: float = 0.0
     status: SignalStatus = "watch"
+    evidence_class: EvidenceClass = "heuristic_backed"
     summary: str
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
     explainability_mask: list[str] = Field(default_factory=list)
@@ -388,6 +405,15 @@ class StageStatus(BaseModel):
     summary: str
     caveats: list[str] = Field(default_factory=list)
     adapter_keys: list[str] = Field(default_factory=list)
+
+
+class ProviderDecision(BaseModel):
+    kind: ProviderKind
+    provider_key: str
+    used: bool = False
+    cached: bool = False
+    status: Literal["ready", "fallback", "blocked", "missing"] = "missing"
+    notes: list[str] = Field(default_factory=list)
 
 
 class SessionDescriptor(BaseModel):
@@ -405,6 +431,7 @@ class SessionDescriptor(BaseModel):
     duration_sec: float = 0.0
     speaker_count: int = 0
     status: str = "completed"
+    readiness_tier: ReadinessTier = "blocked"
 
 
 class SessionBundle(BaseModel):
@@ -416,6 +443,7 @@ class SessionBundle(BaseModel):
     environment: EnvironmentSummary = Field(default_factory=EnvironmentSummary)
     profile: ProfileSummary = Field(default_factory=ProfileSummary)
     profile_display: list[ProfileField] = Field(default_factory=list)
+    profile_coverage: ProfileCoverageSummary = Field(default_factory=ProfileCoverageSummary)
     speaker_roles: SpeakerRoleSummary = Field(default_factory=SpeakerRoleSummary)
     diarization: DiarizationSummary = Field(default_factory=DiarizationSummary)
     waveform: WaveformArtifact = Field(default_factory=WaveformArtifact)
@@ -519,3 +547,122 @@ class DatasetOverview(BaseModel):
     imported_count: int = 0
     adapter_coverage: list[str] = Field(default_factory=list)
     stage_completeness: dict[str, int] = Field(default_factory=dict)
+
+
+class CohortFilters(BaseModel):
+    date_from: str | None = None
+    date_to: str | None = None
+    dataset_ids: list[str] = Field(default_factory=list)
+    source_types: list[str] = Field(default_factory=list)
+    analysis_modes: list[AnalysisMode] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    duration_band: str | None = None
+    quality_band: str | None = None
+    readiness_tiers: list[ReadinessTier] = Field(default_factory=list)
+    role_presence: str | None = None
+    projects: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class CohortKPI(BaseModel):
+    key: str
+    label: str
+    value: float
+    unit: str | None = None
+    delta: float | None = None
+
+
+class CohortTrendPoint(BaseModel):
+    bucket: str
+    run_count: int = 0
+    usable_run_rate: float = 0.0
+    avg_snr_db: float = 0.0
+    hesitation_avg: float = 0.0
+    friction_avg: float = 0.0
+    rapport_avg: float = 0.0
+    frustration_avg: float = 0.0
+
+
+class CohortDistributionItem(BaseModel):
+    key: str
+    label: str
+    value: float
+    value_type: DistributionValueType = "count"
+
+
+class CohortDistribution(BaseModel):
+    key: str
+    label: str
+    items: list[CohortDistributionItem] = Field(default_factory=list)
+
+
+class CohortPhaseSummary(BaseModel):
+    phase: Literal["first_third", "middle_third", "final_third"]
+    hesitation_avg: float = 0.0
+    friction_avg: float = 0.0
+    rapport_avg: float = 0.0
+    frustration_avg: float = 0.0
+    dominant_emotion: str = "unlabeled"
+
+
+class CohortSessionRow(BaseModel):
+    session_id: str
+    title: str
+    source_type: str
+    dataset_id: str | None = None
+    analysis_mode: AnalysisMode
+    language: str | None = None
+    duration_sec: float = 0.0
+    readiness_tier: ReadinessTier = "blocked"
+    usable: bool = False
+    quality_band: str = "unknown"
+    human_present: bool = False
+    ai_present: bool = False
+    top_signal: str | None = None
+
+
+class CohortSummary(BaseModel):
+    filters: CohortFilters = Field(default_factory=CohortFilters)
+    kpis: list[CohortKPI] = Field(default_factory=list)
+    phase_summaries: list[CohortPhaseSummary] = Field(default_factory=list)
+    dominant_emotions: list[CohortDistributionItem] = Field(default_factory=list)
+    runs: list[CohortSessionRow] = Field(default_factory=list)
+
+
+class BenchmarkTaskDefinition(BaseModel):
+    task_type: BenchmarkTaskType
+    label: str
+    metric_keys: list[str] = Field(default_factory=list)
+
+
+class BenchmarkRegistryEntry(BaseModel):
+    benchmark_id: str
+    dataset_id: str
+    title: str
+    status: Literal["ready", "available", "gated", "missing"] = "available"
+    tasks: list[BenchmarkTaskDefinition] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class BenchmarkMetricResult(BaseModel):
+    key: str
+    label: str
+    value: float
+    unit: str | None = None
+    previous_value: float | None = None
+    delta: float | None = None
+    regressed: bool = False
+
+
+class BenchmarkResult(BaseModel):
+    benchmark_id: str
+    dataset_id: str
+    task_type: BenchmarkTaskType
+    split: str = "default"
+    status: Literal["ready", "skipped", "missing"] = "missing"
+    metrics: list[BenchmarkMetricResult] = Field(default_factory=list)
+    run_timestamp: str | None = None
+    model_stack: list[str] = Field(default_factory=list)
+    support_level: EvidenceClass = "heuristic_backed"
+    regressed: bool = False
+    notes: list[str] = Field(default_factory=list)

@@ -82,6 +82,7 @@ def test_session_create_upload_and_process_flow(tmp_path: Path) -> None:
     profile = client.get(f"/api/v1/sessions/{job_id}/profile")
     assert profile.status_code == 200
     assert profile.json()["profile_display"]
+    assert "profile_coverage" in profile.json()
 
     roles = client.get(f"/api/v1/sessions/{job_id}/roles")
     assert roles.status_code == 200
@@ -167,3 +168,51 @@ def test_role_override_endpoint_updates_bundle(tmp_path: Path) -> None:
     payload = updated.json()
     assert payload["speaker_roles"]["primary_human_speaker_id"] == "speaker_0"
     assert payload["speaker_roles"]["primary_ai_speaker_id"] == "speaker_1"
+
+
+def test_cohort_and_benchmark_endpoints_respond(tmp_path: Path) -> None:
+    audio_path = tmp_path / "cohort-api.wav"
+    _write_test_wav(audio_path)
+
+    client = TestClient(app)
+    created = client.post("/api/v1/sessions", json={"analysis_mode": "full", "metadata": {"language_hint": "english", "project": "demo"}})
+    job_id = created.json()["job_id"]
+
+    with audio_path.open("rb") as handle:
+        uploaded = client.post(f"/api/v1/sessions/{job_id}/upload", files={"file": ("cohort-api.wav", handle, "audio/wav")})
+    assert uploaded.status_code == 200
+
+    processed = client.post(
+        f"/api/v1/sessions/{job_id}/process",
+        json={"metadata": {"transcript_hint": "hello there from cohort analytics", "language_hint": "english"}},
+    )
+    assert processed.status_code == 200
+
+    summary = client.get("/api/v1/cohorts/summary")
+    assert summary.status_code == 200
+    assert summary.json()["kpis"]
+
+    trends = client.get("/api/v1/cohorts/trends")
+    assert trends.status_code == 200
+    assert isinstance(trends.json(), list)
+
+    distributions = client.get("/api/v1/cohorts/distributions")
+    assert distributions.status_code == 200
+    assert isinstance(distributions.json(), list)
+    assert any(item["key"] == "readiness_mix" for item in distributions.json())
+
+    sessions = client.get("/api/v1/cohorts/sessions")
+    assert sessions.status_code == 200
+    assert any(item["session_id"] == job_id for item in sessions.json())
+    readiness_tier = next(item["readiness_tier"] for item in sessions.json() if item["session_id"] == job_id)
+    filtered_sessions = client.get("/api/v1/cohorts/sessions", params={"readiness_tiers": readiness_tier})
+    assert filtered_sessions.status_code == 200
+    assert any(item["session_id"] == job_id for item in filtered_sessions.json())
+
+    benchmarks = client.get("/api/v1/benchmarks")
+    assert benchmarks.status_code == 200
+    payload = benchmarks.json()
+    assert payload["registry"]
+    assert payload["results"]
+    assert all("regressed" in result for result in payload["results"])
+    assert all("support_level" in result for result in payload["results"])

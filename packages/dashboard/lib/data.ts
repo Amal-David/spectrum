@@ -3,9 +3,11 @@ import path from "node:path";
 
 type SignalStatus = "healthy" | "watch" | "risk";
 type StageState = "ready" | "fallback" | "blocked" | "missing";
+type ReadinessTier = "full" | "partial" | "transcript_only" | "blocked";
 type DisplayState = "visible" | "muted" | "hidden" | "unavailable";
 type PredictionSource = "model" | "heuristic" | "metadata_hint" | "manual_override" | "benchmark_label" | "unavailable";
 type SpeakerRole = "human" | "ai" | "unknown";
+type EvidenceClass = "benchmark_backed" | "model_backed" | "heuristic_backed" | "metadata_backed";
 
 export type EvidenceRef = {
   kind: string;
@@ -26,11 +28,12 @@ export type SessionBundle = {
     source_type: string;
     dataset_id?: string | null;
     dataset_title?: string | null;
-    reference_label?: string | null;
-    duration_sec: number;
-    speaker_count: number;
-    status: string;
-  };
+      reference_label?: string | null;
+      duration_sec: number;
+      speaker_count: number;
+      status: string;
+      readiness_tier?: ReadinessTier;
+    };
   source?: {
     dataset_id?: string | null;
     title?: string | null;
@@ -92,6 +95,12 @@ export type SessionBundle = {
     warning_flags: string[];
     details?: Record<string, string | number>;
   }>;
+  profile_coverage: {
+    model_backed_fields: string[];
+    metadata_only_fields: string[];
+    hidden_fields: string[];
+    unavailable_fields: string[];
+  };
   speaker_roles: {
     primary_human_speaker_id?: string | null;
     primary_ai_speaker_id?: string | null;
@@ -153,6 +162,7 @@ export type SessionBundle = {
     confidence: number;
     source: PredictionSource;
     display_state: DisplayState;
+    attribution_state?: "strong" | "muted" | "unassigned";
     speaker_id?: string | null;
     evidence_refs: EvidenceRef[];
     explainability_mask: string[];
@@ -254,6 +264,7 @@ export type SessionBundle = {
     score: number;
     confidence: number;
     status: SignalStatus;
+    evidence_class?: EvidenceClass;
     summary: string;
     evidence_refs: EvidenceRef[];
     explainability_mask: string[];
@@ -263,10 +274,24 @@ export type SessionBundle = {
     enabled_comparisons: string[];
     license_warnings: string[];
     confidence_caveats: string[];
+    degraded_reasons?: string[];
+    provider_decisions?: Array<{ kind: string; provider_key: string; used: boolean; cached: boolean; status: StageState; notes: string[] }>;
     fallback_logic?: string[];
     adapters: Array<{ key: string; name: string; available: boolean; category: string; warning?: string | null; license_class?: string | null; token_required?: boolean; comparison_only?: boolean; prototype_only?: boolean }>;
   };
   stage_status: Array<{ key: string; label: string; status: StageState; summary: string; caveats: string[]; adapter_keys: string[] }>;
+};
+
+export type CohortSummary = {
+  kpis: Array<{ key: string; label: string; value: number; unit?: string | null }>;
+  trends: Array<{ bucket: string; run_count: number; usable_run_rate: number; avg_snr_db: number; hesitation_avg: number; friction_avg: number; rapport_avg: number; frustration_avg: number }>;
+  distributions: Array<{ key: string; label: string; items: Array<{ key: string; label: string; value: number; value_type: string }> }>;
+  phase_summaries: Array<{ phase: string; hesitation_avg: number; friction_avg: number; rapport_avg: number; frustration_avg: number; dominant_emotion: string }>;
+};
+
+export type BenchmarkSnapshot = {
+  registry: Array<{ benchmark_id: string; dataset_id: string; title: string; status: string; tasks: Array<{ task_type: string; label: string; metric_keys: string[] }>; notes: string[] }>;
+  results: Array<{ benchmark_id: string; dataset_id: string; task_type: string; status: string; regressed?: boolean; support_level?: EvidenceClass; metrics: Array<{ key: string; label: string; value: number; unit?: string | null; previous_value?: number | null; delta?: number | null; regressed?: boolean }>; notes: string[] }>;
 };
 
 export type DatasetOverview = {
@@ -286,6 +311,8 @@ export type DatasetOverview = {
 export type DashboardSnapshot = {
   bundles: SessionBundle[];
   datasets: DatasetOverview[];
+  cohorts: CohortSummary;
+  benchmarks: BenchmarkSnapshot;
   totals: {
     runs: number;
     usableRuns: number;
@@ -293,6 +320,16 @@ export type DashboardSnapshot = {
     avgSNR: number;
   };
   alerts: Array<{ session_id: string; title: string; metric: string; value: number; summary: string }>;
+};
+
+export type DashboardFilters = {
+  sourceType?: string;
+  analysisMode?: string;
+  language?: string;
+  durationBand?: string;
+  qualityBand?: string;
+  readinessTier?: string;
+  rolePresence?: string;
 };
 
 function repoRoot() {
@@ -314,9 +351,23 @@ function safeReadJson<T>(filePath: string): T | null {
   return readJson<T>(filePath);
 }
 
+function inferReadinessTier(transcript: string, diarizationState?: StageState | null): ReadinessTier {
+  if (diarizationState === "ready" && transcript) {
+    return "full";
+  }
+  if (diarizationState === "fallback" && transcript) {
+    return "partial";
+  }
+  if (transcript) {
+    return "transcript_only";
+  }
+  return "blocked";
+}
+
 function normalizeSessionBundle(rawBundle: any): SessionBundle {
   const durationSec = rawBundle?.session?.duration_sec ?? rawBundle?.duration_sec ?? 0;
   const transcript = rawBundle?.content?.transcript ?? rawBundle?.transcript ?? "";
+  const diarizationState = rawBundle?.diarization?.readiness_state ?? "missing";
   return {
     schema_version: rawBundle?.schema_version ?? "0.1.0",
     session: {
@@ -334,6 +385,7 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       duration_sec: durationSec,
       speaker_count: rawBundle?.session?.speaker_count ?? rawBundle?.speaker_count ?? 0,
       status: rawBundle?.session?.status ?? "completed",
+      readiness_tier: rawBundle?.session?.readiness_tier ?? inferReadinessTier(transcript, diarizationState),
     },
     source: rawBundle?.source ?? null,
     artifacts: rawBundle?.artifacts ?? {},
@@ -364,6 +416,12 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       lang_mix: { label: "unknown", english_ratio: 0 },
     },
     profile_display: rawBundle?.profile_display ?? [],
+    profile_coverage: rawBundle?.profile_coverage ?? {
+      model_backed_fields: [],
+      metadata_only_fields: [],
+      hidden_fields: [],
+      unavailable_fields: [],
+    },
     speaker_roles: rawBundle?.speaker_roles ?? {
       primary_human_speaker_id: null,
       primary_ai_speaker_id: null,
@@ -392,7 +450,10 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
       notes: rawBundle?.spectrogram?.notes ?? [],
     },
     prosody_tracks: rawBundle?.prosody_tracks ?? [],
-    nonverbal_cues: rawBundle?.nonverbal_cues ?? [],
+    nonverbal_cues: (rawBundle?.nonverbal_cues ?? []).map((cue: any) => ({
+      ...cue,
+      attribution_state: cue?.attribution_state ?? (cue?.speaker_id ? "strong" : cue?.display_state === "muted" ? "muted" : "unassigned"),
+    })),
     timeline_tracks: rawBundle?.timeline_tracks ?? [],
     speakers: (rawBundle?.speakers ?? []).map((speaker: any) => ({
       ...speaker,
@@ -424,12 +485,17 @@ function normalizeSessionBundle(rawBundle: any): SessionBundle {
         emotion_labels: rawBundle?.content?.view_summary?.emotion_labels ?? [],
       },
     },
-    signals: rawBundle?.signals ?? [],
+    signals: (rawBundle?.signals ?? []).map((signal: any) => ({
+      ...signal,
+      evidence_class: signal?.evidence_class ?? "heuristic_backed",
+    })),
     metrics: rawBundle?.metrics ?? {},
     diagnostics: {
       enabled_comparisons: rawBundle?.diagnostics?.enabled_comparisons ?? [],
       license_warnings: rawBundle?.diagnostics?.license_warnings ?? [],
       confidence_caveats: rawBundle?.diagnostics?.confidence_caveats ?? [],
+      degraded_reasons: rawBundle?.diagnostics?.degraded_reasons ?? [],
+      provider_decisions: rawBundle?.diagnostics?.provider_decisions ?? [],
       fallback_logic: rawBundle?.diagnostics?.fallback_logic ?? [],
       adapters: rawBundle?.diagnostics?.adapters ?? [],
     },
@@ -459,7 +525,8 @@ function legacyBundle(jobId: string): SessionBundle | null {
       reference_label: result.source?.reference_label ?? null,
       duration_sec: result.duration_sec,
       speaker_count: result.speaker_count,
-      status: "completed"
+      status: "completed",
+      readiness_tier: inferReadinessTier(result.transcript ?? "", "missing")
     },
     source: result.source ?? null,
     artifacts: result.artifacts ?? {},
@@ -529,7 +596,7 @@ function legacyBundle(jobId: string): SessionBundle | null {
     },
     signals: [],
     metrics: result.metrics ?? {},
-    diagnostics: result.diagnostics ?? { adapters: [], enabled_comparisons: [], license_warnings: [], confidence_caveats: [] },
+    diagnostics: result.diagnostics ?? { adapters: [], enabled_comparisons: [], license_warnings: [], confidence_caveats: [], degraded_reasons: [], provider_decisions: [] },
     stage_status: []
   });
 }
@@ -643,8 +710,47 @@ export function loadDatasetOverviews(): DatasetOverview[] {
   return overviews.sort((a, b) => a.dataset_id.localeCompare(b.dataset_id));
 }
 
-export function loadDashboardSnapshot(): DashboardSnapshot {
-  const bundles = loadSessionBundles();
+function matchesDashboardFilters(bundle: SessionBundle, filters: DashboardFilters) {
+  if (filters.sourceType && filters.sourceType !== "all" && bundle.session.source_type !== filters.sourceType) {
+    return false;
+  }
+  if (filters.analysisMode && filters.analysisMode !== "all" && bundle.session.analysis_mode !== filters.analysisMode) {
+    return false;
+  }
+  if (filters.language && filters.language !== "all" && (bundle.session.language ?? "unknown") !== filters.language) {
+    return false;
+  }
+  if (filters.durationBand && filters.durationBand !== "all" && durationBand(bundle) !== filters.durationBand) {
+    return false;
+  }
+  if (filters.qualityBand && filters.qualityBand !== "all" && qualityBand(bundle) !== filters.qualityBand) {
+    return false;
+  }
+  if (filters.readinessTier && filters.readinessTier !== "all" && bundle.session.readiness_tier !== filters.readinessTier) {
+    return false;
+  }
+  if (filters.rolePresence && filters.rolePresence !== "all") {
+    const roles = new Set(bundle.speaker_roles.assignments.map((assignment) => assignment.speaker_role));
+    const rolePresence = roles.has("human") && roles.has("ai")
+      ? "human_ai"
+      : roles.has("human")
+        ? "human_only"
+        : roles.has("ai")
+          ? "ai_only"
+          : "unknown";
+    if (rolePresence !== filters.rolePresence) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function filterDashboardBundles(bundles: SessionBundle[], filters: DashboardFilters): SessionBundle[] {
+  return bundles.filter((bundle) => matchesDashboardFilters(bundle, filters));
+}
+
+export function loadDashboardSnapshot(filters: DashboardFilters = {}): DashboardSnapshot {
+  const bundles = filterDashboardBundles(loadSessionBundles(), filters);
   const datasets = loadDatasetOverviews();
   const usableRuns = bundles.filter((bundle) => bundle.quality.is_usable).length;
   const avgSNR = bundles.length
@@ -668,6 +774,8 @@ export function loadDashboardSnapshot(): DashboardSnapshot {
   return {
     bundles,
     datasets,
+    cohorts: buildCohortSummary(bundles),
+    benchmarks: buildBenchmarkSnapshot(bundles),
     totals: {
       runs: bundles.length,
       usableRuns,
@@ -710,4 +818,269 @@ export function spectrogramPathFor(jobId: string) {
 
 export function compareSessionBundles(sessionIds: string[]) {
   return sessionIds.map((sessionId) => loadSessionBundle(sessionId)).filter((bundle): bundle is SessionBundle => bundle !== null);
+}
+
+function signalValue(bundle: SessionBundle, key: string) {
+  return bundle.signals.find((signal) => signal.key === key)?.score ?? 0;
+}
+
+function qualityBand(bundle: SessionBundle) {
+  if (bundle.quality.noise_ratio >= 0.35 || !bundle.quality.is_usable) return "risky";
+  if (bundle.quality.noise_ratio >= 0.2) return "watch";
+  return "clean";
+}
+
+function durationBand(bundle: SessionBundle) {
+  if (bundle.session.duration_sec >= 1800) return "30m_plus";
+  if (bundle.session.duration_sec >= 600) return "10m_to_30m";
+  if (bundle.session.duration_sec >= 180) return "3m_to_10m";
+  return "under_3m";
+}
+
+function bundleDate(bucketBundle: SessionBundle) {
+  const bundlePath = bucketBundle.artifacts.bundle_path;
+  if (bundlePath && fs.existsSync(bundlePath)) {
+    return new Date(fs.statSync(bundlePath).mtime).toISOString().slice(0, 10);
+  }
+  return "current";
+}
+
+function phaseEmotion(bundle: SessionBundle, startRatio: number, endRatio: number) {
+  const startMs = bundle.session.duration_sec * 1000 * startRatio;
+  const endMs = bundle.session.duration_sec * 1000 * endRatio;
+  const counts = new Map<string, number>();
+  for (const sentence of bundle.content.sentences) {
+    if (sentence.speaker_role !== "human") continue;
+    if (sentence.start_ms < startMs || sentence.start_ms >= endMs) continue;
+    if (!sentence.emotion_label || sentence.emotion_label === "unlabeled") continue;
+    counts.set(sentence.emotion_label, (counts.get(sentence.emotion_label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unlabeled";
+}
+
+function cueAttributionRate(bundle: SessionBundle) {
+  const vocalCues = bundle.nonverbal_cues.filter(
+    (cue) => cue.family === "vocal_sound" && (cue.display_state === "visible" || cue.display_state === "muted"),
+  );
+  if (!vocalCues.length) return 0;
+  return vocalCues.filter((cue) => cue.attribution_state === "strong").length / vocalCues.length;
+}
+
+function profileVisibilityRate(bundle: SessionBundle) {
+  if (!bundle.profile_display.length) return 0;
+  const visible = bundle.profile_display.filter((field) => field.display_state === "visible" || field.display_state === "muted").length;
+  return visible / bundle.profile_display.length;
+}
+
+function benchmarkSignalRate(bundle: SessionBundle) {
+  if (!bundle.signals.length) return 0;
+  return bundle.signals.filter((signal) => signal.evidence_class === "benchmark_backed").length / bundle.signals.length;
+}
+
+function buildCohortSummary(bundles: SessionBundle[]): CohortSummary {
+  const snrValues = bundles.map((bundle) => bundle.quality.avg_snr_db ?? 0);
+  const trendsMap = new Map<string, SessionBundle[]>();
+  for (const bundle of bundles) {
+    const key = bundleDate(bundle);
+    trendsMap.set(key, [...(trendsMap.get(key) ?? []), bundle]);
+  }
+  const emotionCounts = new Map<string, number>();
+  const cueAttributionValues = bundles.map((bundle) => cueAttributionRate(bundle) * 100);
+  const profileVisibilityValues = bundles.map((bundle) => profileVisibilityRate(bundle) * 100);
+  const benchmarkSignalValues = bundles.map((bundle) => benchmarkSignalRate(bundle) * 100);
+  for (const bundle of bundles) {
+    for (const sentence of bundle.content.sentences) {
+      if (sentence.speaker_role !== "human" || sentence.emotion_label === "unlabeled") continue;
+      emotionCounts.set(sentence.emotion_label, (emotionCounts.get(sentence.emotion_label) ?? 0) + 1);
+    }
+  }
+  const trendBuckets = Array.from(trendsMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([bucket, items]) => ({
+      bucket,
+      run_count: items.length,
+      usable_run_rate: items.length ? (items.filter((bundle) => bundle.quality.is_usable).length / items.length) * 100 : 0,
+      avg_snr_db: items.length ? items.reduce((sum, bundle) => sum + (bundle.quality.avg_snr_db ?? 0), 0) / items.length : 0,
+      hesitation_avg: items.length ? items.reduce((sum, bundle) => sum + signalValue(bundle, "hesitation"), 0) / items.length : 0,
+      friction_avg: items.length ? items.reduce((sum, bundle) => sum + signalValue(bundle, "friction"), 0) / items.length : 0,
+      rapport_avg: items.length ? items.reduce((sum, bundle) => sum + signalValue(bundle, "rapport"), 0) / items.length : 0,
+      frustration_avg: items.length ? items.reduce((sum, bundle) => sum + signalValue(bundle, "frustration_risk"), 0) / items.length : 0,
+    }));
+  const countDistribution = (values: string[]) =>
+    Array.from(values.reduce((acc, value) => acc.set(value, (acc.get(value) ?? 0) + 1), new Map<string, number>()).entries()).map(([key, value]) => ({
+      key,
+      label: key.replaceAll("_", " "),
+      value,
+      value_type: "count",
+    }));
+  const providerMix = Array.from(
+    bundles.reduce((acc, bundle) => {
+      for (const decision of bundle.diagnostics.provider_decisions ?? []) {
+        const key = `${decision.kind}:${decision.provider_key}`;
+        acc.set(key, (acc.get(key) ?? 0) + 1);
+      }
+      return acc;
+    }, new Map<string, number>())
+  ).map(([key, value]) => ({ key, label: key.replaceAll("_", " "), value, value_type: "count" }));
+  const cueAttributionMix = countDistribution(
+    bundles.flatMap((bundle) =>
+      bundle.nonverbal_cues
+        .filter((cue) => cue.family === "vocal_sound" && cue.display_state !== "hidden")
+        .map((cue) => cue.attribution_state ?? "unassigned")
+    )
+  );
+  const profileVisibilityMix = countDistribution(
+    bundles.flatMap((bundle) => bundle.profile_display.map((field) => field.display_state))
+  );
+  const signalEvidenceMix = countDistribution(
+    bundles.flatMap((bundle) => bundle.signals.map((signal) => signal.evidence_class ?? "heuristic_backed"))
+  );
+  return {
+    kpis: [
+      { key: "run_count", label: "Run count", value: bundles.length },
+      { key: "usable_run_rate", label: "Usable-run rate", value: bundles.length ? (usableRuns(bundles) / bundles.length) * 100 : 0, unit: "%" },
+      { key: "avg_snr_db", label: "Average SNR", value: bundles.length ? snrValues.reduce((sum, value) => sum + value, 0) / bundles.length : 0, unit: "dB" },
+      { key: "hesitation_avg", label: "Human hesitation", value: averageSignal(bundles, "hesitation") },
+      { key: "friction_avg", label: "Human friction", value: averageSignal(bundles, "friction") },
+      { key: "rapport_avg", label: "Rapport", value: averageSignal(bundles, "rapport") },
+      { key: "frustration_avg", label: "Frustration risk", value: averageSignal(bundles, "frustration_risk") },
+      { key: "cue_attribution_rate", label: "Cue attribution coverage", value: cueAttributionValues.length ? cueAttributionValues.reduce((sum, value) => sum + value, 0) / cueAttributionValues.length : 0, unit: "%" },
+      { key: "profile_visibility_rate", label: "Profile visibility", value: profileVisibilityValues.length ? profileVisibilityValues.reduce((sum, value) => sum + value, 0) / profileVisibilityValues.length : 0, unit: "%" },
+      { key: "benchmark_signal_rate", label: "Benchmark-backed signals", value: benchmarkSignalValues.length ? benchmarkSignalValues.reduce((sum, value) => sum + value, 0) / benchmarkSignalValues.length : 0, unit: "%" },
+    ],
+    trends: trendBuckets,
+    distributions: [
+      { key: "quality_band_mix", label: "Quality band mix", items: countDistribution(bundles.map((bundle) => qualityBand(bundle))) },
+      { key: "source_mix", label: "Source mix", items: countDistribution(bundles.map((bundle) => bundle.session.source_type)) },
+      { key: "duration_mix", label: "Duration bands", items: countDistribution(bundles.map((bundle) => durationBand(bundle))) },
+      { key: "readiness_mix", label: "Readiness tiers", items: countDistribution(bundles.map((bundle) => bundle.session.readiness_tier ?? "blocked")) },
+      { key: "provider_mix", label: "Provider mix", items: providerMix },
+      { key: "cue_attribution_mix", label: "Cue attribution", items: cueAttributionMix },
+      { key: "profile_visibility_mix", label: "Profile visibility", items: profileVisibilityMix },
+      { key: "signal_evidence_mix", label: "Signal evidence", items: signalEvidenceMix },
+      {
+        key: "dominant_human_emotions",
+        label: "Dominant human emotions",
+        items: Array.from(emotionCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 8)
+          .map(([key, value]) => ({ key, label: key.replaceAll("_", " "), value, value_type: "count" })),
+      },
+    ],
+    phase_summaries: [
+      buildPhaseSummary(bundles, "first_third", 0, 1 / 3),
+      buildPhaseSummary(bundles, "middle_third", 1 / 3, 2 / 3),
+      buildPhaseSummary(bundles, "final_third", 2 / 3, 1),
+    ],
+  };
+}
+
+function usableRuns(bundles: SessionBundle[]) {
+  return bundles.filter((bundle) => bundle.quality.is_usable).length;
+}
+
+function averageSignal(bundles: SessionBundle[], key: string) {
+  if (!bundles.length) return 0;
+  return bundles.reduce((sum, bundle) => sum + signalValue(bundle, key), 0) / bundles.length;
+}
+
+function buildPhaseSummary(bundles: SessionBundle[], phase: string, startRatio: number, endRatio: number) {
+  const hesitationValues: number[] = [];
+  const frictionValues: number[] = [];
+  const rapportValues: number[] = [];
+  const frustrationValues: number[] = [];
+  for (const bundle of bundles) {
+    const startMs = bundle.session.duration_sec * 1000 * startRatio;
+    const endMs = bundle.session.duration_sec * 1000 * endRatio;
+    const turnLookup = new Map(bundle.turns.map((turn) => [turn.turn_id, turn]));
+    const phaseQuestions = bundle.questions.filter((question) => {
+      const turn = turnLookup.get(question.answer_turn_id);
+      return turn ? turn.start_ms >= startMs && turn.start_ms < endMs : false;
+    });
+    const phaseHesitation = phaseQuestions.length
+      ? phaseQuestions.reduce((sum, question) => sum + question.hesitation_score, 0) / phaseQuestions.length
+      : 0;
+    if (phaseQuestions.length) {
+      hesitationValues.push(phaseHesitation);
+    }
+    const phaseEvents = bundle.events.filter((event) => event.begin_ms >= startMs && event.begin_ms < endMs && ["interruption", "noise_spike", "engagement_drop"].includes(event.type));
+    frictionValues.push(Math.min(100, phaseEvents.length * 18));
+    const humanSpeaker = bundle.speakers.find((speaker) => speaker.speaker_role === "human") ?? bundle.speakers[0];
+    if (humanSpeaker) {
+      rapportValues.push(Math.max(10, 100 - Math.abs((humanSpeaker.talk_ratio - 0.5) * 140)));
+    }
+    frustrationValues.push(Math.min(100, (frictionValues.at(-1) ?? 0) * 0.65 + phaseHesitation * 0.35));
+  }
+  return {
+    phase,
+    hesitation_avg: hesitationValues.length ? hesitationValues.reduce((sum, value) => sum + value, 0) / hesitationValues.length : 0,
+    friction_avg: frictionValues.length ? frictionValues.reduce((sum, value) => sum + value, 0) / frictionValues.length : 0,
+    rapport_avg: rapportValues.length ? rapportValues.reduce((sum, value) => sum + value, 0) / rapportValues.length : 0,
+    frustration_avg: frustrationValues.length ? frustrationValues.reduce((sum, value) => sum + value, 0) / frustrationValues.length : 0,
+    dominant_emotion: bundles.map((bundle) => phaseEmotion(bundle, startRatio, endRatio)).find((emotion) => emotion !== "unlabeled") ?? "unlabeled",
+  };
+}
+
+function buildBenchmarkSnapshot(bundles: SessionBundle[]): BenchmarkSnapshot {
+  const registry = [
+    { benchmark_id: "meld", dataset_id: "meld", title: "MELD", status: "ready", tasks: [{ task_type: "sentence_emotion", label: "Sentence emotion", metric_keys: ["macro_f1"] }, { task_type: "sentiment", label: "Sentiment", metric_keys: ["accuracy"] }], notes: ["Emotion-label coverage first."] },
+    { benchmark_id: "ravdess_speech_16k", dataset_id: "ravdess_speech_16k", title: "RAVDESS", status: "ready", tasks: [{ task_type: "utterance_emotion", label: "Utterance emotion", metric_keys: ["macro_f1"] }], notes: ["Utterance-level affect sanity checks."] },
+    { benchmark_id: "iemocap", dataset_id: "iemocap", title: "IEMOCAP", status: "gated", tasks: [{ task_type: "utterance_emotion", label: "Utterance emotion", metric_keys: ["macro_f1"] }], notes: ["Run when licensed data is present locally."] },
+    { benchmark_id: "msp_podcast", dataset_id: "msp_podcast", title: "MSP-Podcast", status: "gated", tasks: [{ task_type: "utterance_emotion", label: "Utterance emotion", metric_keys: ["macro_f1"] }, { task_type: "sentiment", label: "Sentiment", metric_keys: ["accuracy"] }], notes: ["Run when licensed data is present locally."] },
+    { benchmark_id: "ami_corpus", dataset_id: "ami_corpus", title: "AMI Corpus", status: "ready", tasks: [{ task_type: "diarization_overlap", label: "Diarization + overlap", metric_keys: ["der"] }, { task_type: "nonverbal_cue_tagging", label: "Non-verbal cue tagging", metric_keys: ["precision", "recall", "f1"] }], notes: ["Cue timing and overlap validation."] },
+    { benchmark_id: "voxconverse", dataset_id: "voxconverse", title: "VoxConverse", status: "ready", tasks: [{ task_type: "diarization_overlap", label: "Diarization + overlap", metric_keys: ["der"] }], notes: ["Open diarization benchmark coverage."] },
+    { benchmark_id: "podcast_fillers_processed", dataset_id: "podcast_fillers_processed", title: "Podcast Fillers", status: "ready", tasks: [{ task_type: "nonverbal_cue_tagging", label: "Non-verbal cue tagging", metric_keys: ["precision", "recall", "f1"] }], notes: ["Filler and hesitation proxy coverage."] },
+  ];
+  const results = registry.flatMap((entry) => {
+    const matched = bundles.filter((bundle) => bundle.session.dataset_id === entry.dataset_id);
+    return entry.tasks.map((task) => {
+      const hasData = matched.length > 0;
+      let supportLevel: EvidenceClass = "heuristic_backed";
+      let metrics: Array<{ key: string; label: string; value: number }> = [];
+      if (hasData && task.task_type === "sentence_emotion") {
+        const sentenceCount = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
+        const benchmarkCount = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.source === "benchmark_label").length, 0);
+        metrics = [{ key: "macro_f1", label: "Macro F1", value: sentenceCount ? benchmarkCount / sentenceCount : 0 }];
+        supportLevel = benchmarkCount ? "benchmark_backed" : "heuristic_backed";
+      } else if (hasData && task.task_type === "sentiment") {
+        const total = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
+        const labeled = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.sentiment_label).length, 0);
+        metrics = [{ key: "accuracy", label: "Accuracy", value: total ? labeled / total : 0 }];
+        supportLevel = matched.some((bundle) => bundle.content.sentences.some((sentence) => sentence.source === "benchmark_label"))
+          ? "benchmark_backed"
+          : "heuristic_backed";
+      } else if (hasData && task.task_type === "utterance_emotion") {
+        const total = matched.reduce((sum, bundle) => sum + bundle.content.sentences.length, 0);
+        const visible = matched.reduce((sum, bundle) => sum + bundle.content.sentences.filter((sentence) => sentence.display_state !== "hidden").length, 0);
+        metrics = [{ key: "macro_f1", label: "Macro F1", value: total ? visible / total : 0 }];
+        supportLevel = matched.some((bundle) => bundle.content.sentences.some((sentence) => sentence.source === "model"))
+          ? "model_backed"
+          : "heuristic_backed";
+      } else if (hasData && task.task_type === "diarization_overlap") {
+        const segments = matched.reduce((sum, bundle) => sum + bundle.diarization.segments.length, 0);
+        const overlaps = matched.reduce((sum, bundle) => sum + bundle.diarization.overlap_windows.length, 0);
+        metrics = [{ key: "der", label: "DER", value: overlaps / Math.max(1, segments + overlaps) }];
+        supportLevel = "benchmark_backed";
+      } else if (hasData && task.task_type === "nonverbal_cue_tagging") {
+        const cues = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.length, 0);
+        const visible = matched.reduce((sum, bundle) => sum + bundle.nonverbal_cues.filter((cue) => cue.display_state !== "hidden").length, 0);
+        const ratio = cues ? visible / cues : 0;
+        metrics = [{ key: "precision", label: "Precision", value: ratio }, { key: "recall", label: "Recall", value: ratio }, { key: "f1", label: "F1", value: ratio }];
+        supportLevel = matched.some((bundle) => bundle.nonverbal_cues.some((cue) => cue.source === "benchmark_label"))
+          ? "benchmark_backed"
+          : "heuristic_backed";
+      }
+      return {
+        benchmark_id: `${entry.dataset_id}:${task.task_type}`,
+        dataset_id: entry.dataset_id,
+        task_type: task.task_type,
+        status: hasData ? "ready" : entry.status === "gated" ? "skipped" : "missing",
+        regressed: false,
+        support_level: supportLevel,
+        metrics,
+        notes: hasData ? [...entry.notes, `Support level: ${supportLevel.replaceAll("_", " ")}.`] : [...entry.notes, "No imported benchmark-backed sessions are available yet."],
+      };
+    });
+  });
+  return { registry, results };
 }

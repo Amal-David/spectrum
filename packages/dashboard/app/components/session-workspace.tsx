@@ -91,6 +91,30 @@ function trackTone(tone: string) {
   }
 }
 
+function evidenceLabel(evidenceClass: string | undefined) {
+  switch (evidenceClass) {
+    case "benchmark_backed":
+      return "benchmark-backed";
+    case "model_backed":
+      return "model-backed";
+    case "metadata_backed":
+      return "metadata-backed";
+    default:
+      return "heuristic-backed";
+  }
+}
+
+function attributionLabel(attributionState: string | undefined) {
+  switch (attributionState) {
+    case "strong":
+      return "speaker-attributed";
+    case "muted":
+      return "timing only";
+    default:
+      return "unassigned";
+  }
+}
+
 function markText(text: string, query: string) {
   if (!query.trim()) return text;
   const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
@@ -284,6 +308,9 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
   const [showAllSegments, setShowAllSegments] = useState(false);
   const deferredSearch = useDeferredValue(searchQuery.trim().toLowerCase());
   const durationMs = Math.max(1, Math.round(bundle.session.duration_sec * 1000));
+  const readinessTier = bundle.session.readiness_tier ?? "blocked";
+  const transcriptionDecision = bundle.diagnostics.provider_decisions?.find((decision) => decision.kind === "transcription");
+  const diarizationDecision = bundle.diagnostics.provider_decisions?.find((decision) => decision.kind === "diarization");
   const currentTimeMs = Math.round(currentTimeSec * 1000);
   const waveformWidth = Math.max(960, Math.round(Math.max(bundle.waveform.bucket_count, bundle.waveform.peaks.length, 320) * zoom * 2.6));
   const emotionOptions = bundle.content.view_summary.emotion_labels.length ? bundle.content.view_summary.emotion_labels : ["unlabeled"];
@@ -304,9 +331,13 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
   const previewProfileFields = showAllProfile ? profileFields : profileFields.slice(0, 4);
   const previewSegments = showAllSegments ? bundle.diarization.segments : bundle.diarization.segments.slice(0, 5);
   const visibleCues = cueCards.filter((cue) => cue.display_state !== "hidden");
+  const visibleVocalCues = bundle.nonverbal_cues.filter((cue) => cue.family === "vocal_sound" && cue.display_state !== "hidden");
   const visibleSignals = bundle.signals;
   const visibleQuestions = bundle.questions;
   const visibleEvents = bundle.events;
+  const attributionLimited = visibleVocalCues.some((cue) => (cue.attribution_state ?? "unassigned") !== "strong");
+  const transcriptReadyWithoutSentenceAlignment = Boolean(bundle.content.transcript.trim()) && !bundle.content.sentences.length;
+  const profileCoverage = bundle.profile_coverage;
   const speakerRoleMap = useMemo(
     () => Object.fromEntries(bundle.speaker_roles.assignments.map((assignment) => [assignment.speaker_id, assignment.speaker_role])),
     [bundle.speaker_roles.assignments],
@@ -418,6 +449,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                 </span>
                 <div className="badge-row">
                   <span className={`badge cue-badge ${trackTone(cue.family === "vocal_sound" ? "accent" : "warning")}`}>{cue.family}</span>
+                  <span className="badge">{attributionLabel(cue.attribution_state)}</span>
                   {cue.speaker_id ? <span className="badge">{cue.speaker_id}</span> : null}
                 </div>
               </button>
@@ -480,6 +512,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                 <div className="badge-row">
                   <span className="badge accent">{signal.label}</span>
                   <span className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>{signal.status}</span>
+                  <span className="badge">{evidenceLabel(signal.evidence_class)}</span>
                 </div>
                 <strong>{signal.score}/100</strong>
                 <p>{signal.summary}</p>
@@ -533,17 +566,34 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
             </span>
           </div>
 
-          {bundle.diarization.readiness_state === "blocked" ? (
+          {readinessTier === "blocked" ? (
             <div className="gate-banner">
-              <strong>Full diarized cue view unavailable for this upload.</strong>
-              <span className="microcopy">{bundle.diarization.notes.join(" ")}</span>
+              <strong>Transcript extraction is blocked for this upload.</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "Quality and waveform inspection may still be available, but the current provider stack did not produce a usable transcript."}
+                {transcriptionDecision ? ` Transcript path: ${transcriptionDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
             </div>
           ) : null}
 
-          {bundle.diarization.readiness_state === "fallback" ? (
+          {readinessTier === "transcript_only" || (bundle.diarization.readiness_state === "blocked" && readinessTier !== "blocked") ? (
+            <div className="gate-banner">
+              <strong>Transcript and quality analysis are ready. Speaker-attributed cues are limited for this upload.</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "The local transcript is still trustworthy, but speaker lanes and vocal-cue attribution need stronger diarization."}
+                {transcriptionDecision ? ` Transcript provider: ${transcriptionDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
+            </div>
+          ) : null}
+
+          {readinessTier === "partial" || (bundle.diarization.readiness_state === "fallback" && readinessTier !== "blocked") || attributionLimited ? (
             <div className="gate-banner fallback">
-              <strong>Using degraded speaker coverage for this upload.</strong>
-              <span className="microcopy">{bundle.diarization.notes.join(" ")}</span>
+              <strong>{attributionLimited ? "Cue timing is available, but speaker attribution stays limited." : "Using limited speaker coverage for this upload."}</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "Transcript and timing are available now; speaker attribution remains provisional until stronger diarization is configured."}
+                {attributionLimited ? " Vocal cue timing remains visible, but attribution is muted unless diarization is strong enough." : ""}
+                {diarizationDecision ? ` Diarization path: ${diarizationDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
             </div>
           ) : null}
 
@@ -713,7 +763,11 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                   {track.status === "blocked" && !track.items.length ? (
                     <div className="track-gate">{track.notes.join(" ") || "This lane is gated for the current session."}</div>
                   ) : !track.items_for_view.length ? (
-                    <div className="track-empty">{track.notes.join(" ") || "No aligned items are available for this lane yet."}</div>
+                    <div className="track-empty">
+                      {track.track_id === "speaker-lanes" && bundle.diarization.readiness_state === "fallback"
+                        ? "Speaker lanes are provisional for this upload. Transcript timing is still available, but speaker attribution needs stronger diarization."
+                        : track.notes.join(" ") || "No aligned items are available for this lane yet."}
+                    </div>
                   ) : (
                     <>
                       <div className={`track-lane ${track.dense ? "dense" : ""}`}>
@@ -859,7 +913,13 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                 );
               })
             ) : (
-              <div className="empty-state">No transcript sentences match the current filters.</div>
+              <div className="empty-state">
+                {bundle.content.sentences.length
+                  ? "No transcript sentences match the current filters."
+                  : transcriptReadyWithoutSentenceAlignment
+                    ? "The transcript is present, but sentence timing or alignment is still missing for this session. The waveform and readiness banners above reflect the strongest currently trustworthy layer."
+                    : "Transcript timing or sentence alignment is not available for this session yet. Use the quality and readiness banners above as the source of truth for what is currently trustworthy."}
+              </div>
             )}
           </div>
         </section>
@@ -940,6 +1000,23 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                 <span className="microcopy">
                   {bundle.profile_display.filter((field) => field.display_state === "visible" || field.display_state === "muted").length} of {bundle.profile_display.length}
                 </span>
+              </div>
+              <div className="summary-grid rail-summary-grid">
+                <article className="summary-card">
+                  <span className="eyebrow muted">Model-backed</span>
+                  <strong>{profileCoverage.model_backed_fields.length}</strong>
+                  <span className="microcopy">fields supported by configured local models</span>
+                </article>
+                <article className="summary-card">
+                  <span className="eyebrow muted">Metadata-only</span>
+                  <strong>{profileCoverage.metadata_only_fields.length}</strong>
+                  <span className="microcopy">trusted benchmark or metadata-backed fields</span>
+                </article>
+                <article className="summary-card">
+                  <span className="eyebrow muted">Hidden / unavailable</span>
+                  <strong>{profileCoverage.hidden_fields.length + profileCoverage.unavailable_fields.length}</strong>
+                  <span className="microcopy">withheld because evidence or adapters are not strong enough</span>
+                </article>
               </div>
               <div className="stack compact">
                 {previewProfileFields.map((field) => (
@@ -1022,6 +1099,16 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
               <strong>{bundle.questions.length}</strong>
               <span className="microcopy">mapped question-answer windows with hesitation and affect notes</span>
             </article>
+            <article className="summary-card">
+              <span className="eyebrow muted">Cue attribution</span>
+              <strong>{visibleVocalCues.length ? `${Math.round((visibleVocalCues.filter((cue) => cue.attribution_state === "strong").length / visibleVocalCues.length) * 100)}%` : "0%"}</strong>
+              <span className="microcopy">share of visible vocal cues with strong speaker attribution</span>
+            </article>
+            <article className="summary-card">
+              <span className="eyebrow muted">Benchmark-backed signals</span>
+              <strong>{bundle.signals.filter((signal) => signal.evidence_class === "benchmark_backed").length}</strong>
+              <span className="microcopy">headline signals grounded in benchmark-backed evidence</span>
+            </article>
           </div>
 
           <details className="details-block" open>
@@ -1037,7 +1124,11 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                   </button>
                 ))
               ) : (
-                <div className="empty-state compact">No speaker segments are available for this session.</div>
+                <div className="empty-state compact">
+                  {bundle.diarization.readiness_state === "fallback"
+                    ? "Speaker segmentation is provisional for this upload. Transcript timing is still available while diarization remains limited."
+                    : "No speaker segments are available for this session."}
+                </div>
               )}
               {bundle.diarization.segments.length > 5 ? (
                 <button className="load-more-button" onClick={() => setShowAllSegments((current) => !current)} type="button">

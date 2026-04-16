@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatMetric, formatPct, loadDashboardSnapshot } from "../lib/data";
+import { formatMetric, formatPct, loadDashboardSnapshot, loadSessionBundles } from "../lib/data";
 import { AnalyzeAudioPanel } from "./components/analyze-audio-panel";
 
 function stageCoverageLabel(readyCount: number, total: number) {
@@ -8,13 +8,35 @@ function stageCoverageLabel(readyCount: number, total: number) {
   return `${readyCount}/${total} sessions`;
 }
 
-export default function HomePage() {
-  const snapshot = loadDashboardSnapshot();
-  const { bundles, datasets, totals, alerts } = snapshot;
+function singleParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function HomePage({ searchParams }: PageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const filters = {
+    sourceType: singleParam(resolvedSearchParams.source_type) ?? "all",
+    analysisMode: singleParam(resolvedSearchParams.analysis_mode) ?? "all",
+    language: singleParam(resolvedSearchParams.language) ?? "all",
+    durationBand: singleParam(resolvedSearchParams.duration_band) ?? "all",
+    qualityBand: singleParam(resolvedSearchParams.quality_band) ?? "all",
+    readinessTier: singleParam(resolvedSearchParams.readiness_tier) ?? "all",
+    rolePresence: singleParam(resolvedSearchParams.role_presence) ?? "all",
+  };
+  const allBundles = loadSessionBundles();
+  const snapshot = loadDashboardSnapshot(filters);
+  const { bundles, datasets, totals, cohorts, benchmarks } = snapshot;
   const defaultCompareIds = bundles.slice(0, 2).map((bundle) => bundle.session.session_id).join(",");
   const cleanRuns = bundles.filter((bundle) => bundle.quality.noise_ratio < 0.2).length;
   const watchRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.2 && bundle.quality.noise_ratio < 0.35).length;
   const riskyRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.35).length;
+  const sourceOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.source_type))).sort();
+  const languageOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.language ?? "unknown"))).sort();
+  const analysisOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.analysis_mode))).sort();
 
   return (
     <main className="analytics-shell">
@@ -60,6 +82,90 @@ export default function HomePage() {
 
       <AnalyzeAudioPanel />
 
+      <section className="panel panel-spacious">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow muted">Cohort Dashboard</span>
+            <h2>Product-ops baseline across saved bundles</h2>
+          </div>
+          <span className="microcopy">Filter the saved bundles by source, mode, language, readiness, duration, quality, and human↔AI posture.</span>
+        </div>
+        <form className="filter-bar" method="get">
+          <select className="filter-select" defaultValue={filters.sourceType} name="source_type">
+            <option value="all">All source types</option>
+            {sourceOptions.map((sourceType) => (
+              <option key={sourceType} value={sourceType}>
+                {sourceType}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.analysisMode} name="analysis_mode">
+            <option value="all">All analysis modes</option>
+            {analysisOptions.map((analysisMode) => (
+              <option key={analysisMode} value={analysisMode}>
+                {analysisMode}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.language} name="language">
+            <option value="all">All languages</option>
+            {languageOptions.map((language) => (
+              <option key={language} value={language}>
+                {language}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" defaultValue={filters.readinessTier} name="readiness_tier">
+            <option value="all">All readiness tiers</option>
+            <option value="full">Full</option>
+            <option value="partial">Partial</option>
+            <option value="transcript_only">Transcript only</option>
+            <option value="blocked">Blocked</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.durationBand} name="duration_band">
+            <option value="all">All duration bands</option>
+            <option value="under_3m">Under 3m</option>
+            <option value="3m_to_10m">3m to 10m</option>
+            <option value="10m_to_30m">10m to 30m</option>
+            <option value="30m_plus">30m+</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.qualityBand} name="quality_band">
+            <option value="all">All quality bands</option>
+            <option value="clean">Clean</option>
+            <option value="watch">Watch</option>
+            <option value="risky">Risky</option>
+          </select>
+          <select className="filter-select" defaultValue={filters.rolePresence} name="role_presence">
+            <option value="all">All role mixes</option>
+            <option value="human_ai">Human + AI</option>
+            <option value="human_only">Human only</option>
+            <option value="ai_only">AI only</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <button className="filter-toggle active" type="submit">
+            Apply filters
+          </button>
+          <Link className="filter-toggle" href="/">
+            Clear
+          </Link>
+        </form>
+        <div className="badge-row">
+          <span className="badge accent">Runs in view {bundles.length}</span>
+          <span className="badge">Source {filters.sourceType === "all" ? "all" : filters.sourceType}</span>
+          <span className="badge">Mode {filters.analysisMode === "all" ? "all" : filters.analysisMode}</span>
+          <span className="badge">Language {filters.language === "all" ? "all" : filters.language}</span>
+          <span className="badge">Readiness {filters.readinessTier === "all" ? "all" : filters.readinessTier}</span>
+        </div>
+        <div className="ribbon-grid" style={{ marginTop: 18 }}>
+          {cohorts.kpis.map((kpi) => (
+            <article className="ribbon-card" key={kpi.key}>
+              <span className="sample-meta">{kpi.label}</span>
+              <strong>{formatMetric(kpi.value, kpi.unit)}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="ribbon-grid">
         <article className="ribbon-card">
           <span className="sample-meta">Quality distribution</span>
@@ -89,9 +195,9 @@ export default function HomePage() {
           <span className="microcopy">{bundles.reduce((sum, bundle) => sum + bundle.events.length, 0)} events attached to the timeline</span>
         </article>
         <article className="ribbon-card">
-          <span className="sample-meta">Adapter posture</span>
-          <strong>Hybrid optional stack</strong>
-          <span className="microcopy">FFmpeg-first, optional ASR / diarization / environment enrichments</span>
+          <span className="sample-meta">Readiness posture</span>
+          <strong>{cohorts.distributions.find((distribution) => distribution.key === "readiness_mix")?.items[0]?.label ?? "No runs yet"}</strong>
+          <span className="microcopy">Readiness tiers stay visible so transcript-only runs remain usable instead of looking broken.</span>
         </article>
       </section>
 
@@ -101,23 +207,95 @@ export default function HomePage() {
             <div className="section-heading">
               <div>
                 <span className="eyebrow muted">Overview</span>
-                <h2>Top risk and signal watchlist</h2>
+                <h2>Cohort trendline</h2>
               </div>
-              <span className="microcopy">Signals inherit explainability masks when quality or VAD is unstable.</span>
+              <span className="microcopy">Daily bundle rollups keep human hesitation, friction, rapport, and frustration in one scan line.</span>
+            </div>
+            <div className="table-shell">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th>Runs</th>
+                    <th>Usable</th>
+                    <th>Avg SNR</th>
+                    <th>Hesitation</th>
+                    <th>Friction</th>
+                    <th>Rapport</th>
+                    <th>Frustration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cohorts.trends.length ? (
+                    cohorts.trends.map((trend) => (
+                      <tr key={trend.bucket}>
+                        <td><strong>{trend.bucket}</strong></td>
+                        <td>{trend.run_count}</td>
+                        <td>{formatMetric(trend.usable_run_rate, "%")}</td>
+                        <td>{formatMetric(trend.avg_snr_db, "dB")}</td>
+                        <td>{Math.round(trend.hesitation_avg)}</td>
+                        <td>{Math.round(trend.friction_avg)}</td>
+                        <td>{Math.round(trend.rapport_avg)}</td>
+                        <td>{Math.round(trend.frustration_avg)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8}><div className="empty-state">Import or bootstrap a few sessions to populate cohort trends.</div></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="panel panel-spacious">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow muted">Distributions</span>
+                <h2>Cohort mixes and long-call drift</h2>
+              </div>
+              <span className="microcopy">Quality bands, source mix, duration mix, dominant human emotions, and first/middle/final third summaries.</span>
             </div>
             <div className="alert-grid">
-              {alerts.length ? (
-                alerts.map((alert) => (
-                  <Link href={`/sessions/${alert.session_id}`} className="alert-card" key={`${alert.session_id}-${alert.metric}`}>
-                    <span className="badge warn">{alert.metric}</span>
-                    <h3>{alert.title}</h3>
-                    <strong>{alert.value}/100</strong>
-                    <p>{alert.summary}</p>
-                  </Link>
-                ))
-              ) : (
-                <div className="empty-state">Import or bootstrap a few sessions to populate the risk watchlist.</div>
-              )}
+              {cohorts.distributions.map((distribution) => (
+                <article className="alert-card" key={distribution.key}>
+                  <span className="badge accent">{distribution.label}</span>
+                  <div className="badge-row">
+                    {distribution.items.slice(0, 6).map((item) => (
+                      <span className="badge" key={`${distribution.key}-${item.key}`}>
+                        {item.label} {item.value}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="table-shell" style={{ marginTop: 18 }}>
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Phase</th>
+                    <th>Hesitation</th>
+                    <th>Friction</th>
+                    <th>Rapport</th>
+                    <th>Frustration</th>
+                    <th>Dominant emotion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cohorts.phase_summaries.map((phase) => (
+                    <tr key={phase.phase}>
+                      <td><strong>{phase.phase.replaceAll("_", " ")}</strong></td>
+                      <td>{Math.round(phase.hesitation_avg)}</td>
+                      <td>{Math.round(phase.friction_avg)}</td>
+                      <td>{Math.round(phase.rapport_avg)}</td>
+                      <td>{Math.round(phase.frustration_avg)}</td>
+                      <td>{phase.dominant_emotion}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -176,44 +354,48 @@ export default function HomePage() {
               <span className="microcopy">Session cards bias toward operational scanability instead of landing-page copy.</span>
             </div>
             <div className="session-grid">
-              {bundles.map((bundle) => (
-                <Link href={`/sessions/${bundle.session.session_id}`} className="session-card" key={bundle.session.session_id}>
-                  <div className="badge-row">
-                    <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
-                    <span className="badge">{bundle.session.analysis_mode}</span>
-                    <span className="badge accent">{bundle.session.source_type}</span>
-                  </div>
-                  <h3>{bundle.session.title}</h3>
-                  <p className="sample-meta">
-                    {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.duration_sec.toFixed(1)} sec
-                  </p>
-                  <div className="session-card-metrics">
-                    <div>
-                      <span className="row-label">Quality</span>
-                      <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
+              {bundles.length ? (
+                bundles.map((bundle) => (
+                  <Link href={`/sessions/${bundle.session.session_id}`} className="session-card" key={bundle.session.session_id}>
+                    <div className="badge-row">
+                      <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
+                      <span className="badge">{bundle.session.analysis_mode}</span>
+                      <span className="badge accent">{bundle.session.source_type}</span>
                     </div>
-                    <div>
-                      <span className="row-label">Noise ratio</span>
-                      <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
+                    <h3>{bundle.session.title}</h3>
+                    <p className="sample-meta">
+                      {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.duration_sec.toFixed(1)} sec
+                    </p>
+                    <div className="session-card-metrics">
+                      <div>
+                        <span className="row-label">Quality</span>
+                        <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Noise ratio</span>
+                        <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Questions</span>
+                        <strong>{bundle.questions.length}</strong>
+                      </div>
+                      <div>
+                        <span className="row-label">Top signal</span>
+                        <strong>{bundle.signals[0]?.label ?? "Pending"}</strong>
+                      </div>
                     </div>
-                    <div>
-                      <span className="row-label">Questions</span>
-                      <strong>{bundle.questions.length}</strong>
+                    <div className="badge-row">
+                      {bundle.signals.slice(0, 3).map((signal) => (
+                        <span key={signal.key} className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>
+                          {signal.label} {signal.score}
+                        </span>
+                      ))}
                     </div>
-                    <div>
-                      <span className="row-label">Top signal</span>
-                      <strong>{bundle.signals[0]?.label ?? "Pending"}</strong>
-                    </div>
-                  </div>
-                  <div className="badge-row">
-                    {bundle.signals.slice(0, 3).map((signal) => (
-                      <span key={signal.key} className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>
-                        {signal.label} {signal.score}
-                      </span>
-                    ))}
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              ) : (
+                <div className="empty-state">No sessions match the current cohort filters.</div>
+              )}
             </div>
           </section>
         </div>
@@ -290,6 +472,47 @@ export default function HomePage() {
                   </span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="panel panel-spacious">
+            <span className="eyebrow muted">Benchmarks</span>
+            <h2>Capability and quality coverage</h2>
+            <div className="table-shell">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Dataset</th>
+                    <th>Status</th>
+                    <th>Tasks</th>
+                    <th>Current metric snapshot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {benchmarks.registry.map((entry) => {
+                    const matching = benchmarks.results.filter((result) => result.dataset_id === entry.dataset_id);
+                    return (
+                      <tr key={entry.benchmark_id}>
+                        <td>
+                          <strong>{entry.title}</strong>
+                          <div className="microcopy">{entry.dataset_id}</div>
+                        </td>
+                        <td><span className={`badge ${entry.status === "ready" ? "ok" : "warn"}`}>{entry.status}</span></td>
+                        <td>{entry.tasks.map((task) => task.label).join(", ")}</td>
+                        <td>
+                          <div className="badge-row">
+                            {matching.slice(0, 3).map((result) => (
+                              <span className="badge" key={result.benchmark_id}>
+                                {result.task_type}: {result.metrics[0] ? formatMetric(result.metrics[0].value) : result.status}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </section>
         </aside>
