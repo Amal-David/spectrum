@@ -42,6 +42,8 @@ export type CallRecord = {
   reviewState: ReviewState
   summary: string
   audioUrl: string
+  waveformDurationSeconds?: number
+  waveformPeaks?: number[][]
   audioAsset: AudioAsset
   qualityTier: QualityTier
   trustTier: TrustTier

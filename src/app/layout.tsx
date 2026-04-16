@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 
+import { AppHeader } from "@/components/app/app-header";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -21,8 +22,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Open Voice Analytics",
-  description: "Shadcn-first OSS frontend scaffold for voice analytics",
+  title: "Spectrum",
+  description: "Shadcn-first analytics workspace for voice AI agents",
 };
 
 export default function RootLayout({
@@ -40,15 +41,9 @@ export default function RootLayout({
           <SidebarProvider>
             <AppSidebar />
             <SidebarInset>
-              <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-                <SidebarTrigger className="-ml-1" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">Spectrum</span>
-                  <span className="text-xs text-muted-foreground">
-                    Open voice analytics
-                  </span>
-                </div>
-              </header>
+              <Suspense fallback={<AppHeaderFallback />}>
+                <AppHeader />
+              </Suspense>
               <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                 {children}
               </main>
@@ -57,5 +52,17 @@ export default function RootLayout({
         </TooltipProvider>
       </body>
     </html>
+  );
+}
+
+function AppHeaderFallback() {
+  return (
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+      <div className="w-8" />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm font-medium">Spectrum</span>
+        <span className="text-sm text-muted-foreground">Dashboard</span>
+      </div>
+    </header>
   );
 }

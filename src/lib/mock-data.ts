@@ -13,8 +13,13 @@ import type {
   QuestionInsight,
   WaveformTrack,
 } from "@/lib/types"
+import {
+  sampleWaveformDurationSeconds,
+  sampleWaveformPeaks,
+} from "@/lib/sample-waveform"
 
 export const demoAudioUrl = "/demo-call.wav"
+export const sampleAudioUrl = "/api/sample-audio/sample-one.wav"
 
 export const calls: CallRecord[] = [
   {
@@ -30,16 +35,18 @@ export const calls: CallRecord[] = [
     district: "Mumbai City",
     region: "West",
     speakerCount: 2,
-    durationSeconds: 1820,
+    durationSeconds: 1273,
     uploadedAt: "2026-04-14T09:15:00.000Z",
     reviewState: "needs-review",
     summary:
       "Pricing hesitation spikes after ROI questions, with one noisy answer start near the close.",
-    audioUrl: demoAudioUrl,
+    audioUrl: sampleAudioUrl,
+    waveformDurationSeconds: sampleWaveformDurationSeconds,
+    waveformPeaks: sampleWaveformPeaks,
     audioAsset: {
-      originalUrl: demoAudioUrl,
-      normalizedUrl: demoAudioUrl,
-      telephonyUrl: demoAudioUrl,
+      originalUrl: sampleAudioUrl,
+      normalizedUrl: sampleAudioUrl,
+      telephonyUrl: sampleAudioUrl,
     },
     qualityTier: "watch",
     trustTier: "discounted",

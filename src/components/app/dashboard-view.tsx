@@ -439,21 +439,6 @@ const severityVariant = {
 export function DashboardView() {
   return (
     <div className="flex min-w-0 flex-col gap-6 p-4 md:p-6">
-      <div className="flex flex-col gap-2">
-        <Badge variant="secondary" className="w-fit">
-          Business dashboard
-        </Badge>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-balance">
-            Google Analytics for voice AI agents
-          </h1>
-          <p className="max-w-4xl text-sm text-muted-foreground">
-            Track business outcomes, India-first demographic performance, trusted emotion and
-            behavior patterns, and the cohorts that need review before the next agent release.
-          </p>
-        </div>
-      </div>
-
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {dashboardDataset.businessMetrics.map((metric) => (
           <Card key={metric.id}>

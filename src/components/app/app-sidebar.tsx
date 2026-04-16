@@ -52,8 +52,8 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex items-center justify-between gap-2 px-2 py-1">
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium">Open Voice Analytics</span>
-            <span className="text-xs text-muted-foreground">OSS frontend scaffold</span>
+            <span className="text-sm font-medium">Spectrum</span>
+            <span className="text-xs text-muted-foreground">Voice agent analytics</span>
           </div>
           <Badge variant="secondary">Mock</Badge>
         </div>
