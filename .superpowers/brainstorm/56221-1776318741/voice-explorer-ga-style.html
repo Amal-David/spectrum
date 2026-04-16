@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Analytics Explorer</title>
+    <style>
+      :root {
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --line: #e5eaf1;
+        --text: #0f172a;
+        --muted: #64748b;
+        --navy: #0f172a;
+        --blue: #3b82f6;
+        --blue-soft: #dbeafe;
+        --purple: #8b5cf6;
+        --purple-soft: #ede9fe;
+        --green: #10b981;
+        --green-soft: #d1fae5;
+        --amber: #f59e0b;
+        --amber-soft: #fef3c7;
+        --red: #ef4444;
+        --red-soft: #fee2e2;
+        --gray: #cbd5e1;
+        --chip: #f8fafc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 72px 1fr;
+      }
+
+      .rail {
+        background: #fff;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px 0;
+        gap: 18px;
+      }
+
+      .rail .logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f59e0b, #f97316);
+      }
+
+      .rail .icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .topbar {
+        height: 72px;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        gap: 16px;
+      }
+
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .product {
+        font-size: 28px;
+        font-weight: 800;
+      }
+
+      .search {
+        min-width: 320px;
+        max-width: 520px;
+        flex: 1;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 16px;
+        color: var(--muted);
+      }
+
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #60a5fa, #2563eb);
+      }
+
+      .page {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .mode-switch {
+        display: inline-flex;
+        gap: 8px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 8px;
+        width: fit-content;
+      }
+
+      .mode-btn {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 14px;
+        border-radius: 12px;
+        padding: 11px 16px;
+        cursor: pointer;
+      }
+
+      .mode-btn.active {
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .crumbs {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .title-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      h1 {
+        margin: 6px 0 8px;
+        font-size: 34px;
+        line-height: 1.05;
+      }
+
+      .sub {
+        margin: 0;
+        color: #475569;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .chip {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #334155;
+        font-weight: 800;
+      }
+
+      .layout {
+        display: grid;
+        gap: 18px;
+      }
+
+      .single-layout {
+        grid-template-columns: 1.6fr 1fr;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .card-label {
+        font-size: 12px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .card h2 {
+        margin: 6px 0 8px;
+        font-size: 24px;
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .kpi {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .kpi .name {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .kpi .value {
+        margin-top: 6px;
+        font-size: 32px;
+        font-weight: 900;
+      }
+
+      .kpi .hint {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #475569;
+      }
+
+      .wave-shell {
+        background: #0f172a;
+        border-radius: 18px;
+        padding: 18px;
+        color: #fff;
+        margin-top: 16px;
+      }
+
+      .wave-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: #cbd5e1;
+        margin-bottom: 10px;
+      }
+
+      .wave {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 126px;
+        margin-bottom: 12px;
+      }
+
+      .bar {
+        width: 8px;
+        border-radius: 7px;
+      }
+
+      .track {
+        display: grid;
+        grid-template-columns: 104px 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-top: 8px;
+      }
+
+      .track .name {
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+
+      .track-bars {
+        display: flex;
+        gap: 3px;
+        height: 15px;
+      }
+
+      .event-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .event-chip {
+        background: #1e293b;
+        color: white;
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .moments {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .moment {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .group-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 18px;
+      }
+
+      .chart {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .chart-area {
+        height: 220px;
+        background:
+          linear-gradient(to top, rgba(226,232,240,.65) 1px, transparent 1px) 0 0/100% 44px;
+        border-radius: 16px;
+        position: relative;
+        overflow: hidden;
+        margin-top: 14px;
+      }
+
+      .chart-area svg {
+        position: absolute;
+        inset: 0;
+      }
+
+      .legend {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #334155;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
+      .dist-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .dist-row {
+        display: grid;
+        grid-template-columns: 124px 1fr 44px;
+        gap: 10px;
+        align-items: center;
+        font-size: 13px;
+      }
+
+      .dist-track {
+        height: 14px;
+        background: #eff6ff;
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .dist-fill {
+        height: 100%;
+        border-radius: 999px;
+      }
+
+      .table-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        overflow: hidden;
+      }
+
+      .table-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 18px 12px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .table {
+        min-width: 1200px;
+      }
+
+      .thead,
+      .row {
+        display: grid;
+        grid-template-columns: 180px 150px 220px 220px 120px 160px 120px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .thead {
+        padding: 0 18px 12px;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 800;
+      }
+
+      .row {
+        padding: 14px 18px;
+        border-top: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .row:hover {
+        background: #fafcff;
+      }
+
+      .call strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .call .meta {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      .mini-wave {
+        display: flex;
+        align-items: flex-end;
+        gap: 1px;
+        height: 40px;
+      }
+
+      .mini-wave span {
+        width: 4px;
+        border-radius: 4px;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .tag {
+        font-size: 12px;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        color: #334155;
+      }
+
+      .ready {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 800;
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .good {
+        background: var(--green-soft);
+        color: #166534;
+      }
+
+      .warn {
+        background: var(--amber-soft);
+        color: #92400e;
+      }
+
+      .bad {
+        background: var(--red-soft);
+        color: #b91c1c;
+      }
+
+      .open-btn {
+        justify-self: start;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      @media (max-width: 1200px) {
+        .single-layout,
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail">
+        <div class="logo"></div>
+        <div class="icon"></div>
+        <div class="icon"></div>
+        <div class="icon"></div>
+        <div class="icon"></div>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="product">Voice Analytics</div>
+            <div class="search">Search calls, emotions, behaviors, or noise patterns...</div>
+          </div>
+          <div class="topbar-right">
+            <span>Last 28 days</span>
+            <div class="avatar"></div>
+          </div>
+        </div>
+
+        <div class="page">
+          <div class="mode-switch">
+            <button class="mode-btn active" onclick="showPanel('group', this)">
+              Group View
+            </button>
+            <button class="mode-btn" onclick="showPanel('single', this)">
+              Single Call View
+            </button>
+          </div>
+
+          <section id="group" class="panel active">
+            <div class="crumbs">Explorer / Grouped Voice Analysis</div>
+            <div class="title-row">
+              <div>
+                <h1>Queries: AI + Human discovery calls</h1>
+                <p class="sub">
+                  Google-Analytics-style exploration for 10 calls at once. Top
+                  summary shows grouped emotional and behavioral insights.
+                  Table rows help you spot the calls worth opening.
+                </p>
+              </div>
+              <div class="filters">
+                <span class="chip">Date: Mar 19 - Apr 15</span>
+                <span class="chip">Call type: Discovery</span>
+                <span class="chip">Speaker mode: AI + Human</span>
+                <span class="chip">Comparison: Noise detected</span>
+                <span class="chip">Rows: 10</span>
+              </div>
+            </div>
+
+            <div class="group-stack">
+              <div class="kpis">
+                <div class="kpi">
+                  <div class="name">Avg Confidence</div>
+                  <div class="value">68</div>
+                  <div class="hint">3 calls above 78</div>
+                </div>
+                <div class="kpi">
+                  <div class="name">Avg Hesitation</div>
+                  <div class="value">44</div>
+                  <div class="hint">2 early-call spikes common</div>
+                </div>
+                <div class="kpi">
+                  <div class="name">Avg Friction</div>
+                  <div class="value">49</div>
+                  <div class="hint">2 severe outliers</div>
+                </div>
+                <div class="kpi">
+                  <div class="name">Noise Issue Rate</div>
+                  <div class="value">30%</div>
+                  <div class="hint">3 of 10 calls affected</div>
+                </div>
+              </div>
+
+              <div class="summary-grid">
+                <div class="chart">
+                  <div class="card-label">Grouped Emotional Insights</div>
+                  <h2>Emotion signals across the selected 10 calls</h2>
+                  <p class="sub">
+                    This top chart answers: across this batch, are humans
+                    becoming more confident, more hesitant, or more friction-prone?
+                  </p>
+
+                  <div class="chart-area">
+                    <svg viewBox="0 0 800 220" preserveAspectRatio="none">
+                      <path d="M0,170 C70,158 130,150 190,132 C255,114 310,104 380,98 C440,93 505,101 565,110 C630,120 700,140 800,126 L800,220 L0,220 Z" fill="rgba(59,130,246,.14)"></path>
+                      <path d="M0,170 C70,158 130,150 190,132 C255,114 310,104 380,98 C440,93 505,101 565,110 C630,120 700,140 800,126" fill="none" stroke="#3b82f6" stroke-width="4"></path>
+
+                      <path d="M0,120 C80,135 150,145 215,132 C280,118 335,104 400,115 C465,128 520,140 595,146 C665,151 730,142 800,158" fill="none" stroke="#8b5cf6" stroke-width="4"></path>
+
+                      <path d="M0,144 C72,138 130,126 190,118 C260,110 330,116 390,128 C455,142 520,150 585,156 C660,164 720,169 800,150" fill="none" stroke="#ef4444" stroke-width="4"></path>
+                    </svg>
+                  </div>
+
+                  <div class="legend">
+                    <span class="legend-item"><i class="dot" style="background:#3b82f6"></i> confidence trend</span>
+                    <span class="legend-item"><i class="dot" style="background:#8b5cf6"></i> hesitation trend</span>
+                    <span class="legend-item"><i class="dot" style="background:#ef4444"></i> friction trend</span>
+                  </div>
+                </div>
+
+                <div class="chart">
+                  <div class="card-label">Behavioral + Emotion Distribution</div>
+                  <h2>What dominates this batch</h2>
+                  <div class="dist-bars">
+                    <div class="dist-row">
+                      <div>Confidence cluster</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:72%;background:var(--green)"></div></div>
+                      <div>72%</div>
+                    </div>
+                    <div class="dist-row">
+                      <div>Hesitation cluster</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:44%;background:var(--purple)"></div></div>
+                      <div>44%</div>
+                    </div>
+                    <div class="dist-row">
+                      <div>Friction cluster</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:49%;background:var(--red)"></div></div>
+                      <div>49%</div>
+                    </div>
+                    <div class="dist-row">
+                      <div>Avg latency</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:36%;background:var(--blue)"></div></div>
+                      <div>2.9s</div>
+                    </div>
+                    <div class="dist-row">
+                      <div>Fillers / min</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:52%;background:var(--amber)"></div></div>
+                      <div>5.4</div>
+                    </div>
+                    <div class="dist-row">
+                      <div>Noise affected</div>
+                      <div class="dist-track"><div class="dist-fill" style="width:30%;background:var(--gray)"></div></div>
+                      <div>3/10</div>
+                    </div>
+                  </div>
+
+                  <div class="legend">
+                    <span class="legend-item">Top raw emotions: 😰 anxiety, 💪 determination, 🤔 doubt, 😌 relief</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-card">
+                <div class="table-head">
+                  <div>
+                    <div class="card-label">Call Table</div>
+                    <h2 style="margin:6px 0 0">Emotional insights + behavioral insights per call</h2>
+                  </div>
+                  <div class="filters">
+                    <span class="chip">Sort: Friction desc</span>
+                    <span class="chip">Search</span>
+                  </div>
+                </div>
+
+                <div class="table-wrap">
+                  <div class="table">
+                    <div class="thead">
+                      <div>Call</div>
+                      <div>Waveform</div>
+                      <div>Emotional insights</div>
+                      <div>Behavioral insights</div>
+                      <div>Readiness</div>
+                      <div>Noise / environment</div>
+                      <div>Action</div>
+                    </div>
+
+                    <div class="row">
+                      <div class="call">
+                        <strong>Call 1842</strong>
+                        <div class="meta">30:12 • discovery • home office</div>
+                      </div>
+                      <div class="mini-wave">
+                        <span style="height:16px;background:#8b5cf6"></span><span style="height:22px;background:#8b5cf6"></span><span style="height:28px;background:#3b82f6"></span><span style="height:35px;background:#10b981"></span><span style="height:39px;background:#10b981"></span><span style="height:31px;background:#f59e0b"></span><span style="height:25px;background:#ef4444"></span><span style="height:16px;background:#cbd5e1"></span>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Confidence-led with late friction</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">💪 determination peak</span>
+                          <span class="tag">😬 pricing friction</span>
+                          <span class="tag">volatility: medium</span>
+                        </div>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Latency 2.8s • Fillers 6.2/min</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">hesitation 46</span>
+                          <span class="tag">interruptions 5</span>
+                          <span class="tag">talk ratio 57%</span>
+                        </div>
+                      </div>
+                      <div><span class="ready warn">58 • qualified, not committed</span></div>
+                      <div class="tag-row">
+                        <span class="tag">fan hum</span>
+                        <span class="tag">typing</span>
+                      </div>
+                      <button class="open-btn" onclick="showPanel('single', document.querySelectorAll('.mode-btn')[1]);window.scrollTo({top:0,behavior:'smooth'});">Open call</button>
+                    </div>
+
+                    <div class="row">
+                      <div class="call">
+                        <strong>Call 1839</strong>
+                        <div class="meta">27:45 • discovery • office</div>
+                      </div>
+                      <div class="mini-wave">
+                        <span style="height:12px;background:#3b82f6"></span><span style="height:18px;background:#3b82f6"></span><span style="height:25px;background:#10b981"></span><span style="height:30px;background:#10b981"></span><span style="height:35px;background:#10b981"></span><span style="height:26px;background:#f59e0b"></span><span style="height:15px;background:#cbd5e1"></span><span style="height:10px;background:#cbd5e1"></span>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Stable confidence throughout</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">😌 calmness</span>
+                          <span class="tag">💪 determination</span>
+                          <span class="tag">volatility: low</span>
+                        </div>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Latency 1.9s • Fillers 3.1/min</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">hesitation 25</span>
+                          <span class="tag">interruptions 1</span>
+                          <span class="tag">directness high</span>
+                        </div>
+                      </div>
+                      <div><span class="ready good">74 • strong readiness</span></div>
+                      <div class="tag-row">
+                        <span class="tag">office quiet</span>
+                      </div>
+                      <button class="open-btn" onclick="showPanel('single', document.querySelectorAll('.mode-btn')[1]);window.scrollTo({top:0,behavior:'smooth'});">Open call</button>
+                    </div>
+
+                    <div class="row">
+                      <div class="call">
+                        <strong>Call 1831</strong>
+                        <div class="meta">32:08 • discovery • mobile transit</div>
+                      </div>
+                      <div class="mini-wave">
+                        <span style="height:15px;background:#8b5cf6"></span><span style="height:21px;background:#8b5cf6"></span><span style="height:28px;background:#8b5cf6"></span><span style="height:24px;background:#3b82f6"></span><span style="height:18px;background:#f59e0b"></span><span style="height:22px;background:#ef4444"></span><span style="height:25px;background:#94a3b8"></span><span style="height:16px;background:#cbd5e1"></span>
+                      </div>
+                      <div class="stack">
+                        <div><strong>High anxiety, weak recovery</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">😰 anxiety</span>
+                          <span class="tag">🤔 doubt</span>
+                          <span class="tag">volatility: high</span>
+                        </div>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Latency 4.4s • Fillers 8.1/min</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">hesitation 71</span>
+                          <span class="tag">repair events 6</span>
+                          <span class="tag">dead air high</span>
+                        </div>
+                      </div>
+                      <div><span class="ready bad">33 • low readiness</span></div>
+                      <div class="tag-row">
+                        <span class="tag">traffic</span>
+                        <span class="tag">vehicle hum</span>
+                        <span class="tag">connection wobble</span>
+                      </div>
+                      <button class="open-btn" onclick="showPanel('single', document.querySelectorAll('.mode-btn')[1]);window.scrollTo({top:0,behavior:'smooth'});">Open call</button>
+                    </div>
+
+                    <div class="row">
+                      <div class="call">
+                        <strong>Call 1827</strong>
+                        <div class="meta">24:11 • discovery • quiet room</div>
+                      </div>
+                      <div class="mini-wave">
+                        <span style="height:12px;background:#3b82f6"></span><span style="height:18px;background:#3b82f6"></span><span style="height:24px;background:#10b981"></span><span style="height:30px;background:#10b981"></span><span style="height:32px;background:#10b981"></span><span style="height:24px;background:#f59e0b"></span><span style="height:14px;background:#cbd5e1"></span><span style="height:9px;background:#cbd5e1"></span>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Calm, engaged, low friction</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">😌 calmness</span>
+                          <span class="tag">👀 interest</span>
+                          <span class="tag">volatility: low</span>
+                        </div>
+                      </div>
+                      <div class="stack">
+                        <div><strong>Latency 2.1s • Fillers 3.8/min</strong></div>
+                        <div class="tag-row">
+                          <span class="tag">hesitation 29</span>
+                          <span class="tag">interruptions 2</span>
+                          <span class="tag">good directness</span>
+                        </div>
+                      </div>
+                      <div><span class="ready good">69 • likely follow-up</span></div>
+                      <div class="tag-row">
+                        <span class="tag">quiet room</span>
+                      </div>
+                      <button class="open-btn" onclick="showPanel('single', document.querySelectorAll('.mode-btn')[1]);window.scrollTo({top:0,behavior:'smooth'});">Open call</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="single" class="panel">
+            <div class="crumbs">Explorer / Single Call Analysis</div>
+            <div class="title-row">
+              <div>
+                <h1>Call 1842: AI product discovery call</h1>
+                <p class="sub">
+                  Deep dive for one selected call. This is the drill-down target
+                  from the grouped explorer.
+                </p>
+              </div>
+              <div class="filters">
+                <span class="chip">Duration: 30:12</span>
+                <span class="chip">Mode: AI + Human</span>
+                <span class="chip">Noise: Home office</span>
+              </div>
+            </div>
+
+            <div class="layout single-layout">
+              <div class="card">
+                <div class="card-label">Call Player</div>
+                <h2>Emotion-aware waveform</h2>
+                <p class="sub">
+                  Human segments are color-coded by dominant emotion cluster,
+                  with a heatband and noise track underneath.
+                </p>
+
+                <div class="wave-shell">
+                  <div class="wave-top">
+                    <span>Full call waveform</span>
+                    <span>00:00 → 30:12</span>
+                  </div>
+                  <div class="wave">
+                    <div class="bar" style="height:24px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:38px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:54px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:68px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:82px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:60px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:40px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:26px;background:#8b5cf6"></div>
+                    <div class="bar" style="height:22px;background:#3b82f6"></div>
+                    <div class="bar" style="height:32px;background:#3b82f6"></div>
+                    <div class="bar" style="height:46px;background:#3b82f6"></div>
+                    <div class="bar" style="height:62px;background:#3b82f6"></div>
+                    <div class="bar" style="height:78px;background:#3b82f6"></div>
+                    <div class="bar" style="height:90px;background:#3b82f6"></div>
+                    <div class="bar" style="height:74px;background:#3b82f6"></div>
+                    <div class="bar" style="height:55px;background:#3b82f6"></div>
+                    <div class="bar" style="height:36px;background:#3b82f6"></div>
+                    <div class="bar" style="height:22px;background:#10b981"></div>
+                    <div class="bar" style="height:30px;background:#10b981"></div>
+                    <div class="bar" style="height:44px;background:#10b981"></div>
+                    <div class="bar" style="height:58px;background:#10b981"></div>
+                    <div class="bar" style="height:72px;background:#10b981"></div>
+                    <div class="bar" style="height:86px;background:#10b981"></div>
+                    <div class="bar" style="height:98px;background:#10b981"></div>
+                    <div class="bar" style="height:80px;background:#10b981"></div>
+                    <div class="bar" style="height:64px;background:#10b981"></div>
+                    <div class="bar" style="height:42px;background:#10b981"></div>
+                    <div class="bar" style="height:28px;background:#f59e0b"></div>
+                    <div class="bar" style="height:38px;background:#f59e0b"></div>
+                    <div class="bar" style="height:52px;background:#f59e0b"></div>
+                    <div class="bar" style="height:66px;background:#f59e0b"></div>
+                    <div class="bar" style="height:82px;background:#f59e0b"></div>
+                    <div class="bar" style="height:96px;background:#f59e0b"></div>
+                    <div class="bar" style="height:108px;background:#f59e0b"></div>
+                    <div class="bar" style="height:90px;background:#f59e0b"></div>
+                    <div class="bar" style="height:72px;background:#f59e0b"></div>
+                    <div class="bar" style="height:50px;background:#f59e0b"></div>
+                    <div class="bar" style="height:30px;background:#ef4444"></div>
+                    <div class="bar" style="height:42px;background:#ef4444"></div>
+                    <div class="bar" style="height:58px;background:#ef4444"></div>
+                    <div class="bar" style="height:72px;background:#ef4444"></div>
+                    <div class="bar" style="height:84px;background:#ef4444"></div>
+                    <div class="bar" style="height:68px;background:#ef4444"></div>
+                    <div class="bar" style="height:48px;background:#ef4444"></div>
+                    <div class="bar" style="height:28px;background:#ef4444"></div>
+                    <div class="bar" style="height:22px;background:#cbd5e1"></div>
+                    <div class="bar" style="height:30px;background:#cbd5e1"></div>
+                    <div class="bar" style="height:42px;background:#cbd5e1"></div>
+                    <div class="bar" style="height:54px;background:#cbd5e1"></div>
+                    <div class="bar" style="height:38px;background:#cbd5e1"></div>
+                    <div class="bar" style="height:28px;background:#cbd5e1"></div>
+                  </div>
+                  <div class="track">
+                    <div class="name">Emotion heatband</div>
+                    <div class="track-bars">
+                      <div style="flex:6;background:#8b5cf6;border-radius:6px"></div>
+                      <div style="flex:8;background:#3b82f6;border-radius:6px"></div>
+                      <div style="flex:9;background:#10b981;border-radius:6px"></div>
+                      <div style="flex:8;background:#f59e0b;border-radius:6px"></div>
+                      <div style="flex:6;background:#ef4444;border-radius:6px"></div>
+                      <div style="flex:4;background:#cbd5e1;border-radius:6px"></div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="name">Noise track</div>
+                    <div class="track-bars" style="height:14px">
+                      <div style="flex:10;background:#334155;border-radius:6px"></div>
+                      <div style="flex:3;background:#22c55e;border-radius:6px"></div>
+                      <div style="flex:6;background:#334155;border-radius:6px"></div>
+                      <div style="flex:4;background:#eab308;border-radius:6px"></div>
+                      <div style="flex:5;background:#334155;border-radius:6px"></div>
+                      <div style="flex:2;background:#38bdf8;border-radius:6px"></div>
+                    </div>
+                  </div>
+                  <div class="event-chips">
+                    <span class="event-chip">03:40 😰 anxiety + doubt</span>
+                    <span class="event-chip">12:10 😌 calmness stabilizes</span>
+                    <span class="event-chip">18:32 💪 determination peak</span>
+                    <span class="event-chip">25:48 😬 friction spike</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:18px">
+                <div class="card">
+                  <div class="card-label">Human scorecards</div>
+                  <h2>Primary analyst metrics</h2>
+                  <div class="kpis" style="grid-template-columns:1fr 1fr">
+                    <div class="kpi"><div class="name">Confidence</div><div class="value">71</div><div class="hint">rose +18 after minute 11</div></div>
+                    <div class="kpi"><div class="name">Hesitation</div><div class="value">46</div><div class="hint">highest in first 6 min</div></div>
+                    <div class="kpi"><div class="name">Engagement</div><div class="value">74</div><div class="hint">strong mid-call</div></div>
+                    <div class="kpi"><div class="name">Readiness</div><div class="value">58</div><div class="hint">positive but not committed</div></div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-label">Key moments</div>
+                  <h2>What changed in this call</h2>
+                  <div class="moments">
+                    <div class="moment"><strong>03:40</strong> Hesitation spike after the AI asks about workflow pain points.</div>
+                    <div class="moment"><strong>18:32</strong> Strong confidence and intent signal with implementation-specific language.</div>
+                    <div class="moment"><strong>25:48</strong> Friction rises when pricing and internal approval are discussed.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      function showPanel(id, button) {
+        document.querySelectorAll(".panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === id);
+        });
+        document.querySelectorAll(".mode-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        button.classList.add("active");
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,189 @@
+<h2>Single-Call Voice Analytics Workbench</h2>
+<p class="subtitle">Recommended layout for a product-style analytics experience: emotional intelligence + behavioral analytics for one human in an AI conversation.</p>
+
+<div class="section">
+  <div class="options">
+    <div class="option" data-choice="recommended" onclick="toggleSelect(this)">
+      <div class="letter">R</div>
+      <div class="content">
+        <h3>Recommended Direction</h3>
+        <p>Split-view analyst workbench. Emotion clusters lead the UI, raw expressions appear on hover, drilldown, and the detailed timeline.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Page Anatomy</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1.7fr 1fr;gap:16px;">
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <div class="label">Call Overview</div>
+              <div style="font-size:22px;font-weight:700;">Audio Player + Emotion Waveform</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <span style="padding:8px 10px;background:#f3f4f6;border-radius:999px;font-size:12px;">Human focus</span>
+              <span style="padding:8px 10px;background:#f3f4f6;border-radius:999px;font-size:12px;">AI as context</span>
+            </div>
+          </div>
+
+          <div style="background:#111827;border-radius:16px;padding:18px;color:#fff;">
+            <div style="display:flex;gap:4px;align-items:flex-end;height:120px;margin-bottom:12px;">
+              <div style="width:8px;height:35px;background:#93c5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:62px;background:#93c5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:88px;background:#93c5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:70px;background:#fdba74;border-radius:8px;"></div>
+              <div style="width:8px;height:94px;background:#fdba74;border-radius:8px;"></div>
+              <div style="width:8px;height:78px;background:#fdba74;border-radius:8px;"></div>
+              <div style="width:8px;height:52px;background:#c4b5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:73px;background:#c4b5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:58px;background:#c4b5fd;border-radius:8px;"></div>
+              <div style="width:8px;height:45px;background:#6ee7b7;border-radius:8px;"></div>
+              <div style="width:8px;height:69px;background:#6ee7b7;border-radius:8px;"></div>
+              <div style="width:8px;height:54px;background:#6ee7b7;border-radius:8px;"></div>
+              <div style="width:8px;height:38px;background:#fca5a5;border-radius:8px;"></div>
+              <div style="width:8px;height:60px;background:#fca5a5;border-radius:8px;"></div>
+            </div>
+
+            <div style="display:flex;gap:4px;height:16px;margin-bottom:12px;">
+              <div style="flex:2;background:#93c5fd;border-radius:6px;"></div>
+              <div style="flex:2;background:#fdba74;border-radius:6px;"></div>
+              <div style="flex:2;background:#c4b5fd;border-radius:6px;"></div>
+              <div style="flex:2;background:#6ee7b7;border-radius:6px;"></div>
+              <div style="flex:1;background:#fca5a5;border-radius:6px;"></div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
+                <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Cluster: Calmness</span>
+                <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Raw: Contemplation</span>
+                <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Raw: Doubt</span>
+              </div>
+              <div style="font-size:12px;color:#d1d5db;">hover reveals raw expressions</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px;">
+          <div class="label">Timeline Intelligence</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:10px;">Behavior + Emotion Timeline</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;">
+              <div style="font-size:12px;color:#6b7280;">Human turns</div>
+              <div style="display:flex;gap:4px;">
+                <div style="flex:3;height:14px;background:#111827;border-radius:6px;"></div>
+                <div style="flex:2;height:14px;background:#111827;border-radius:6px;"></div>
+                <div style="flex:4;height:14px;background:#111827;border-radius:6px;"></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;">
+              <div style="font-size:12px;color:#6b7280;">AI turns</div>
+              <div style="display:flex;gap:4px;">
+                <div style="flex:2;height:14px;background:#d1d5db;border-radius:6px;"></div>
+                <div style="flex:3;height:14px;background:#d1d5db;border-radius:6px;"></div>
+                <div style="flex:2;height:14px;background:#d1d5db;border-radius:6px;"></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;">
+              <div style="font-size:12px;color:#6b7280;">Hesitation</div>
+              <div style="display:flex;gap:16px;">
+                <span style="width:12px;height:12px;background:#f59e0b;border-radius:999px;"></span>
+                <span style="width:12px;height:12px;background:#f59e0b;border-radius:999px;"></span>
+                <span style="width:12px;height:12px;background:#f59e0b;border-radius:999px;"></span>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;">
+              <div style="font-size:12px;color:#6b7280;">Friction</div>
+              <div style="display:flex;gap:4px;">
+                <div style="width:40%;height:10px;background:linear-gradient(90deg,#fde68a,#fca5a5);border-radius:999px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px;">
+          <div class="label">Human Summary</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:12px;">Top Analyst Cards</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="background:#f8fafc;border-radius:14px;padding:12px;">
+              <div style="font-size:12px;color:#6b7280;">Confidence</div>
+              <div style="font-size:26px;font-weight:700;">72</div>
+            </div>
+            <div style="background:#f8fafc;border-radius:14px;padding:12px;">
+              <div style="font-size:12px;color:#6b7280;">Hesitation</div>
+              <div style="font-size:26px;font-weight:700;">41</div>
+            </div>
+            <div style="background:#f8fafc;border-radius:14px;padding:12px;">
+              <div style="font-size:12px;color:#6b7280;">Engagement</div>
+              <div style="font-size:26px;font-weight:700;">68</div>
+            </div>
+            <div style="background:#f8fafc;border-radius:14px;padding:12px;">
+              <div style="font-size:12px;color:#6b7280;">Readiness</div>
+              <div style="font-size:26px;font-weight:700;">59</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px;">
+          <div class="label">Emotion Surface</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:10px;">Cluster Map + Raw Drilldown</div>
+          <div style="height:250px;border-radius:16px;background:
+            radial-gradient(circle at 20% 70%, rgba(250,204,21,.45), transparent 22%),
+            radial-gradient(circle at 70% 25%, rgba(168,85,247,.35), transparent 25%),
+            radial-gradient(circle at 55% 55%, rgba(14,165,233,.28), transparent 24%),
+            radial-gradient(circle at 35% 30%, rgba(249,115,22,.32), transparent 20%),
+            linear-gradient(135deg,#f3e8ff,#fef3c7,#e0f2fe);position:relative;overflow:hidden;">
+            <span style="position:absolute;top:20px;left:28px;background:#fff;padding:6px 10px;border-radius:999px;">Confidence</span>
+            <span style="position:absolute;top:54px;right:28px;background:#fff;padding:6px 10px;border-radius:999px;">Anxiety</span>
+            <span style="position:absolute;top:102px;left:40px;background:#fff;padding:6px 10px;border-radius:999px;">Calmness</span>
+            <span style="position:absolute;bottom:36px;left:70px;background:#fff;padding:6px 10px;border-radius:999px;">Interest</span>
+            <span style="position:absolute;bottom:44px;right:44px;background:#fff;padding:6px 10px;border-radius:999px;">Friction</span>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin-top:10px;">Default shows clusters. Hover or click opens raw expressions like determination, doubt, awkwardness, relief, and contemplation.</p>
+        </div>
+
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px;">
+          <div class="label">Key Moments</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="background:#f8fafc;border-radius:12px;padding:10px;">00:42 • Hesitation spike after AI question</div>
+            <div style="background:#f8fafc;border-radius:12px;padding:10px;">01:18 • Confidence rises when human explains prior experience</div>
+            <div style="background:#f8fafc;border-radius:12px;padding:10px;">02:03 • Readiness weakens after pricing / commitment prompt</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Recommended Metric Model</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>Primary on the page</h4>
+      <ul>
+        <li>Confidence</li>
+        <li>Hesitation</li>
+        <li>Engagement</li>
+        <li>Readiness</li>
+        <li>Talk ratio</li>
+        <li>Response latency</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>Secondary drilldown</h4>
+      <ul>
+        <li>Raw expressions</li>
+        <li>Fillers and hedge words</li>
+        <li>Repair events</li>
+        <li>Interruption details</li>
+        <li>Volatility math</li>
+        <li>Audio quality confidence</li>
+      </ul>
+    </div>
+  </div>
+</div>

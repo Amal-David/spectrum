@@ -1,0 +1,114 @@
+<h2>Waveform Emotion Highlighting</h2>
+<p class="subtitle">Pick the emotion-highlighting style that should lead the single-call analysis page.</p>
+
+<div class="cards">
+  <div class="card" data-choice="segments" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. Colored Segments on Waveform</div>
+        <div class="mockup-body">
+          <div style="background:#111827;border-radius:16px;padding:20px;height:220px;display:flex;flex-direction:column;justify-content:space-between;">
+            <div style="display:flex;gap:4px;align-items:flex-end;height:110px;">
+              <div style="width:8px;height:42px;background:#60a5fa;border-radius:8px;"></div>
+              <div style="width:8px;height:68px;background:#60a5fa;border-radius:8px;"></div>
+              <div style="width:8px;height:92px;background:#60a5fa;border-radius:8px;"></div>
+              <div style="width:8px;height:78px;background:#fb923c;border-radius:8px;"></div>
+              <div style="width:8px;height:98px;background:#fb923c;border-radius:8px;"></div>
+              <div style="width:8px;height:83px;background:#fb923c;border-radius:8px;"></div>
+              <div style="width:8px;height:54px;background:#a78bfa;border-radius:8px;"></div>
+              <div style="width:8px;height:76px;background:#a78bfa;border-radius:8px;"></div>
+              <div style="width:8px;height:64px;background:#a78bfa;border-radius:8px;"></div>
+              <div style="width:8px;height:48px;background:#34d399;border-radius:8px;"></div>
+              <div style="width:8px;height:70px;background:#34d399;border-radius:8px;"></div>
+              <div style="width:8px;height:60px;background:#34d399;border-radius:8px;"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;color:#f9fafb;font-size:12px;">
+              <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Calmness</span>
+              <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Determination</span>
+              <span style="background:#1f2937;padding:4px 8px;border-radius:999px;">Anxiety</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Segment Overlay</h3>
+      <p>The waveform itself changes color by dominant emotion cluster over time.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="markers" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. Neutral Waveform + Emotion Markers</div>
+        <div class="mockup-body">
+          <div style="background:#111827;border-radius:16px;padding:20px;height:220px;display:flex;flex-direction:column;justify-content:space-between;position:relative;">
+            <div style="display:flex;gap:4px;align-items:flex-end;height:110px;">
+              <div style="width:8px;height:42px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:68px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:92px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:78px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:98px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:83px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:54px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:76px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:64px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:48px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:70px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:60px;background:#d1d5db;border-radius:8px;"></div>
+            </div>
+            <div style="position:absolute;left:72px;top:28px;background:#fb923c;color:#111827;padding:4px 8px;border-radius:999px;font-size:11px;">Confidence rise</div>
+            <div style="position:absolute;left:190px;top:52px;background:#a78bfa;color:#111827;padding:4px 8px;border-radius:999px;font-size:11px;">Anxiety spike</div>
+            <div style="position:absolute;left:128px;top:144px;background:#34d399;color:#111827;padding:4px 8px;border-radius:999px;font-size:11px;">Recovery</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Moment Markers</h3>
+      <p>Keep the waveform clean and attach emotion labels only to the important peaks and shifts.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="heatband" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. Waveform + Emotion Heatband</div>
+        <div class="mockup-body">
+          <div style="background:#111827;border-radius:16px;padding:20px;height:220px;display:flex;flex-direction:column;justify-content:space-between;">
+            <div style="display:flex;gap:4px;align-items:flex-end;height:110px;">
+              <div style="width:8px;height:42px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:68px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:92px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:78px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:98px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:83px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:54px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:76px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:64px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:48px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:70px;background:#d1d5db;border-radius:8px;"></div>
+              <div style="width:8px;height:60px;background:#d1d5db;border-radius:8px;"></div>
+            </div>
+            <div style="display:flex;gap:4px;height:18px;">
+              <div style="flex:2;background:#93c5fd;border-radius:6px;"></div>
+              <div style="flex:1;background:#fdba74;border-radius:6px;"></div>
+              <div style="flex:2;background:#c4b5fd;border-radius:6px;"></div>
+              <div style="flex:1;background:#6ee7b7;border-radius:6px;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:#f9fafb;font-size:11px;">
+              <span>Calmness</span>
+              <span>Determination</span>
+              <span>Anxiety</span>
+              <span>Relief</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Heatband Track</h3>
+      <p>Keep the waveform neutral and add a colored strip beneath it showing emotional state by time segment.</p>
+    </div>
+  </div>
+</div>

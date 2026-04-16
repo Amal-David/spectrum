@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Analytics Views</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #dbe2ea;
+        --text: #0f172a;
+        --muted: #64748b;
+        --navy: #0f172a;
+        --slate: #cbd5e1;
+        --purple: #c4b5fd;
+        --blue: #93c5fd;
+        --green: #6ee7b7;
+        --amber: #fdba74;
+        --red: #fca5a5;
+        --gray: #d1d5db;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 24%);
+        color: var(--text);
+      }
+
+      .page {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 28px 24px 60px;
+      }
+
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 8px 0 10px;
+        font-size: 36px;
+        line-height: 1.05;
+      }
+
+      .subtitle {
+        max-width: 920px;
+        margin: 0 0 18px;
+        color: #334155;
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      .toggle-bar {
+        display: inline-flex;
+        gap: 8px;
+        padding: 8px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        backdrop-filter: blur(12px);
+        margin-bottom: 20px;
+      }
+
+      .toggle-btn {
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-size: 14px;
+        font-weight: 800;
+        color: #475569;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .toggle-btn.active {
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
+      }
+
+      .hero-note {
+        background: #e0f2fe;
+        color: #0c4a6e;
+        border: 1px solid #bae6fd;
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 14px;
+        line-height: 1.5;
+        margin-bottom: 18px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .single-grid {
+        grid-template-columns: 1.6fr 1fr;
+      }
+
+      .group-grid {
+        grid-template-columns: 1.15fr 1fr;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .card h2 {
+        margin: 6px 0 8px;
+        font-size: 26px;
+      }
+
+      .label {
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .mini {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+      }
+
+      .mini .k {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .mini .v {
+        font-size: 24px;
+        font-weight: 900;
+        margin-top: 4px;
+      }
+
+      .wave-shell {
+        background: #0f172a;
+        border-radius: 18px;
+        padding: 18px;
+        color: white;
+        margin-top: 16px;
+      }
+
+      .wave-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: #cbd5e1;
+        margin-bottom: 10px;
+      }
+
+      .wave {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 130px;
+        margin-bottom: 12px;
+        overflow: hidden;
+      }
+
+      .bar {
+        width: 8px;
+        border-radius: 8px;
+      }
+
+      .track {
+        display: grid;
+        grid-template-columns: 112px 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-top: 8px;
+      }
+
+      .track .name {
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+
+      .track-bars {
+        display: flex;
+        gap: 3px;
+        height: 16px;
+      }
+
+      .chip-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .chip {
+        background: #1e293b;
+        color: white;
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .score-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .score {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 14px;
+      }
+
+      .score .name {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .score .value {
+        font-size: 34px;
+        font-weight: 900;
+        margin-top: 6px;
+      }
+
+      .score .hint {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 4px;
+      }
+
+      .moments {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .moment {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .filter {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #334155;
+        font-weight: 700;
+      }
+
+      .query-card {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .query-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+
+      .query-top h2 {
+        margin: 6px 0 0;
+        font-size: 24px;
+      }
+
+      .query-btn {
+        background: var(--navy);
+        color: white;
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-weight: 800;
+      }
+
+      .table {
+        display: grid;
+        gap: 10px;
+      }
+
+      .thead,
+      .row {
+        display: grid;
+        grid-template-columns: 1.1fr 1.2fr 0.9fr 0.9fr 0.9fr 1fr;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .thead {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 800;
+        padding: 0 6px;
+      }
+
+      .row {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 12px 10px;
+      }
+
+      .row strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .row .sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      .mini-wave {
+        display: flex;
+        align-items: flex-end;
+        gap: 1px;
+        height: 42px;
+      }
+
+      .mini-wave span {
+        width: 4px;
+        border-radius: 6px;
+      }
+
+      .badge {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        padding: 6px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .badge.good {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .badge.warn {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .badge.bad {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .sidebar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .side-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+      }
+
+      .legend {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .legend span {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 12px;
+        color: #334155;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+
+      @media (max-width: 1120px) {
+        .single-grid,
+        .group-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .meta-grid,
+        .score-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .thead,
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="eyebrow">Voice Analytics Product Exploration</div>
+      <h1>Single-Call Player and Group Query View</h1>
+      <p class="subtitle">
+        This shows the two product modes side by side in one system. The
+        <strong>single-call view</strong> is for deep investigation of one
+        conversation. The <strong>group view</strong> is for scanning 10 calls
+        at once, spotting outliers, and drilling into the ones that matter.
+      </p>
+
+      <div class="toggle-bar">
+        <button class="toggle-btn active" onclick="showPanel('single', this)">
+          Single Call View
+        </button>
+        <button class="toggle-btn" onclick="showPanel('group', this)">
+          Group View (10 Calls)
+        </button>
+      </div>
+
+      <div id="single" class="panel active">
+        <div class="hero-note">
+          Use this when the analyst wants to understand one call in detail:
+          emotional journey, hesitation, readiness, friction, noise context,
+          and exact timestamped moments.
+        </div>
+
+        <div class="grid single-grid">
+          <div class="card">
+            <div class="label">Call Player</div>
+            <h2>Emotion-Aware 30-Minute Waveform</h2>
+            <p class="subtitle" style="margin: 0 0 10px">
+              Human-speaking segments are color-coded by dominant emotion
+              cluster. The heatband and noise track sit under the waveform for
+              fast scanning.
+            </p>
+
+            <div class="meta-grid">
+              <div class="mini">
+                <div class="k">Duration</div>
+                <div class="v">30:12</div>
+              </div>
+              <div class="mini">
+                <div class="k">Transcript confidence</div>
+                <div class="v">94%</div>
+              </div>
+              <div class="mini">
+                <div class="k">Noise context</div>
+                <div class="v" style="font-size: 20px">Home office</div>
+              </div>
+              <div class="mini">
+                <div class="k">Speaker mode</div>
+                <div class="v" style="font-size: 20px">AI + Human</div>
+              </div>
+            </div>
+
+            <div class="wave-shell">
+              <div class="wave-header">
+                <span>Full call waveform</span>
+                <span>00:00 → 30:12</span>
+              </div>
+              <div class="wave">
+                <div class="bar" style="height: 24px; background: var(--purple)"></div>
+                <div class="bar" style="height: 38px; background: var(--purple)"></div>
+                <div class="bar" style="height: 54px; background: var(--purple)"></div>
+                <div class="bar" style="height: 70px; background: var(--purple)"></div>
+                <div class="bar" style="height: 84px; background: var(--purple)"></div>
+                <div class="bar" style="height: 62px; background: var(--purple)"></div>
+                <div class="bar" style="height: 40px; background: var(--purple)"></div>
+                <div class="bar" style="height: 28px; background: var(--purple)"></div>
+                <div class="bar" style="height: 24px; background: var(--blue)"></div>
+                <div class="bar" style="height: 34px; background: var(--blue)"></div>
+                <div class="bar" style="height: 49px; background: var(--blue)"></div>
+                <div class="bar" style="height: 63px; background: var(--blue)"></div>
+                <div class="bar" style="height: 78px; background: var(--blue)"></div>
+                <div class="bar" style="height: 91px; background: var(--blue)"></div>
+                <div class="bar" style="height: 72px; background: var(--blue)"></div>
+                <div class="bar" style="height: 55px; background: var(--blue)"></div>
+                <div class="bar" style="height: 36px; background: var(--blue)"></div>
+                <div class="bar" style="height: 23px; background: var(--green)"></div>
+                <div class="bar" style="height: 31px; background: var(--green)"></div>
+                <div class="bar" style="height: 47px; background: var(--green)"></div>
+                <div class="bar" style="height: 61px; background: var(--green)"></div>
+                <div class="bar" style="height: 75px; background: var(--green)"></div>
+                <div class="bar" style="height: 88px; background: var(--green)"></div>
+                <div class="bar" style="height: 100px; background: var(--green)"></div>
+                <div class="bar" style="height: 82px; background: var(--green)"></div>
+                <div class="bar" style="height: 66px; background: var(--green)"></div>
+                <div class="bar" style="height: 44px; background: var(--green)"></div>
+                <div class="bar" style="height: 28px; background: var(--amber)"></div>
+                <div class="bar" style="height: 39px; background: var(--amber)"></div>
+                <div class="bar" style="height: 52px; background: var(--amber)"></div>
+                <div class="bar" style="height: 67px; background: var(--amber)"></div>
+                <div class="bar" style="height: 82px; background: var(--amber)"></div>
+                <div class="bar" style="height: 97px; background: var(--amber)"></div>
+                <div class="bar" style="height: 110px; background: var(--amber)"></div>
+                <div class="bar" style="height: 90px; background: var(--amber)"></div>
+                <div class="bar" style="height: 71px; background: var(--amber)"></div>
+                <div class="bar" style="height: 50px; background: var(--amber)"></div>
+                <div class="bar" style="height: 30px; background: var(--red)"></div>
+                <div class="bar" style="height: 43px; background: var(--red)"></div>
+                <div class="bar" style="height: 59px; background: var(--red)"></div>
+                <div class="bar" style="height: 72px; background: var(--red)"></div>
+                <div class="bar" style="height: 86px; background: var(--red)"></div>
+                <div class="bar" style="height: 68px; background: var(--red)"></div>
+                <div class="bar" style="height: 49px; background: var(--red)"></div>
+                <div class="bar" style="height: 29px; background: var(--red)"></div>
+                <div class="bar" style="height: 22px; background: var(--gray)"></div>
+                <div class="bar" style="height: 31px; background: var(--gray)"></div>
+                <div class="bar" style="height: 44px; background: var(--gray)"></div>
+                <div class="bar" style="height: 55px; background: var(--gray)"></div>
+                <div class="bar" style="height: 39px; background: var(--gray)"></div>
+                <div class="bar" style="height: 28px; background: var(--gray)"></div>
+              </div>
+
+              <div class="track">
+                <div class="name">Emotion heatband</div>
+                <div class="track-bars">
+                  <div style="flex: 6; background: var(--purple); border-radius: 6px"></div>
+                  <div style="flex: 8; background: var(--blue); border-radius: 6px"></div>
+                  <div style="flex: 9; background: var(--green); border-radius: 6px"></div>
+                  <div style="flex: 8; background: var(--amber); border-radius: 6px"></div>
+                  <div style="flex: 6; background: var(--red); border-radius: 6px"></div>
+                  <div style="flex: 4; background: var(--gray); border-radius: 6px"></div>
+                </div>
+              </div>
+
+              <div class="track">
+                <div class="name">Noise track</div>
+                <div class="track-bars" style="height: 14px">
+                  <div style="flex: 10; background: #334155; border-radius: 6px"></div>
+                  <div style="flex: 3; background: #22c55e; border-radius: 6px"></div>
+                  <div style="flex: 6; background: #334155; border-radius: 6px"></div>
+                  <div style="flex: 4; background: #eab308; border-radius: 6px"></div>
+                  <div style="flex: 5; background: #334155; border-radius: 6px"></div>
+                  <div style="flex: 2; background: #38bdf8; border-radius: 6px"></div>
+                </div>
+              </div>
+
+              <div class="chip-row">
+                <span class="chip">03:40 😰 anxiety + doubt</span>
+                <span class="chip">12:10 😌 calmness stabilizes</span>
+                <span class="chip">18:32 💪 determination peak</span>
+                <span class="chip">25:48 😬 friction spike</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <div class="card">
+              <div class="label">Human Scorecards</div>
+              <h2>Primary analyst metrics</h2>
+              <div class="score-grid">
+                <div class="score">
+                  <div class="name">Confidence</div>
+                  <div class="value">71</div>
+                  <div class="hint">rose +18 after minute 11</div>
+                </div>
+                <div class="score">
+                  <div class="name">Hesitation</div>
+                  <div class="value">46</div>
+                  <div class="hint">highest in first 6 min</div>
+                </div>
+                <div class="score">
+                  <div class="name">Engagement</div>
+                  <div class="value">74</div>
+                  <div class="hint">strongest from min 12 to 22</div>
+                </div>
+                <div class="score">
+                  <div class="name">Readiness</div>
+                  <div class="value">58</div>
+                  <div class="hint">positive but not committed</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="label">Key Moments</div>
+              <h2>What changed in this call</h2>
+              <div class="moments">
+                <div class="moment"><strong>03:40</strong> Hesitation spikes after the AI asks about workflow pain points.</div>
+                <div class="moment"><strong>11:56</strong> Emotional stability improves once the AI gives concrete examples.</div>
+                <div class="moment"><strong>18:32</strong> Confidence and intent rise when the human discusses implementation details.</div>
+                <div class="moment"><strong>25:48</strong> Friction increases when budget and approval are introduced.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="group" class="panel">
+        <div class="hero-note">
+          Use this when the analyst wants a Google-Analytics-style query surface:
+          compare 10 calls, sort by confidence or friction, spot outliers, and
+          click into the interesting waveform.
+        </div>
+
+        <div class="group-header">
+          <div>
+            <div class="label">Group Analysis</div>
+            <h2 style="margin: 6px 0 8px; font-size: 30px">10-call query viewer</h2>
+            <p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.5">
+              This behaves like a voice analytics query table: each row is one
+              call, each row shows a compact emotional waveform, top signals,
+              and analyst-ready metrics.
+            </p>
+          </div>
+          <div class="filters">
+            <span class="filter">Date: Last 7 days</span>
+            <span class="filter">Call type: Discovery</span>
+            <span class="filter">Speaker mode: AI + Human</span>
+            <span class="filter">Sort: Friction descending</span>
+          </div>
+        </div>
+
+        <div class="grid group-grid">
+          <div class="query-card">
+            <div class="query-top">
+              <div>
+                <div class="label">Query Results</div>
+                <h2>Calls matching current filter</h2>
+              </div>
+              <button class="query-btn">Open selected calls</button>
+            </div>
+
+            <div class="thead">
+              <div>Call</div>
+              <div>Mini waveform</div>
+              <div>Confidence</div>
+              <div>Friction</div>
+              <div>Readiness</div>
+              <div>Top signal</div>
+            </div>
+
+            <div class="table">
+              <div class="row">
+                <div><strong>Call 1842</strong><div class="sub">30:12 • home office</div></div>
+                <div class="mini-wave">
+                  <span style="height:16px;background:var(--purple)"></span><span style="height:24px;background:var(--purple)"></span><span style="height:29px;background:var(--blue)"></span><span style="height:36px;background:var(--blue)"></span><span style="height:41px;background:var(--green)"></span><span style="height:34px;background:var(--amber)"></span><span style="height:26px;background:var(--red)"></span><span style="height:18px;background:var(--gray)"></span>
+                </div>
+                <div>71</div>
+                <div>62</div>
+                <div>58</div>
+                <div><span class="badge warn">😬 pricing friction</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1839</strong><div class="sub">27:45 • office</div></div>
+                <div class="mini-wave">
+                  <span style="height:12px;background:var(--blue)"></span><span style="height:18px;background:var(--blue)"></span><span style="height:26px;background:var(--green)"></span><span style="height:30px;background:var(--green)"></span><span style="height:38px;background:var(--green)"></span><span style="height:27px;background:var(--amber)"></span><span style="height:17px;background:var(--gray)"></span><span style="height:10px;background:var(--gray)"></span>
+                </div>
+                <div>79</div>
+                <div>28</div>
+                <div>74</div>
+                <div><span class="badge good">💪 high readiness</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1831</strong><div class="sub">32:08 • mobile / transit</div></div>
+                <div class="mini-wave">
+                  <span style="height:15px;background:var(--purple)"></span><span style="height:22px;background:var(--purple)"></span><span style="height:31px;background:var(--purple)"></span><span style="height:26px;background:var(--blue)"></span><span style="height:20px;background:var(--amber)"></span><span style="height:24px;background:var(--red)"></span><span style="height:19px;background:#38bdf8"></span><span style="height:14px;background:var(--gray)"></span>
+                </div>
+                <div>54</div>
+                <div>69</div>
+                <div>33</div>
+                <div><span class="badge bad">🚗 noisy + hesitant</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1827</strong><div class="sub">24:11 • quiet room</div></div>
+                <div class="mini-wave">
+                  <span style="height:12px;background:var(--blue)"></span><span style="height:19px;background:var(--blue)"></span><span style="height:28px;background:var(--blue)"></span><span style="height:36px;background:var(--green)"></span><span style="height:33px;background:var(--green)"></span><span style="height:26px;background:var(--amber)"></span><span style="height:16px;background:var(--gray)"></span><span style="height:10px;background:var(--gray)"></span>
+                </div>
+                <div>76</div>
+                <div>31</div>
+                <div>69</div>
+                <div><span class="badge good">😌 stable call</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1825</strong><div class="sub">29:50 • home office</div></div>
+                <div class="mini-wave">
+                  <span style="height:11px;background:var(--purple)"></span><span style="height:18px;background:var(--blue)"></span><span style="height:23px;background:var(--blue)"></span><span style="height:32px;background:var(--green)"></span><span style="height:40px;background:var(--green)"></span><span style="height:35px;background:var(--amber)"></span><span style="height:25px;background:var(--red)"></span><span style="height:16px;background:var(--gray)"></span>
+                </div>
+                <div>73</div>
+                <div>51</div>
+                <div>61</div>
+                <div><span class="badge warn">🤝 good intent, budget blocker</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1821</strong><div class="sub">31:04 • office</div></div>
+                <div class="mini-wave">
+                  <span style="height:13px;background:var(--purple)"></span><span style="height:21px;background:var(--purple)"></span><span style="height:26px;background:var(--blue)"></span><span style="height:24px;background:var(--amber)"></span><span style="height:18px;background:var(--red)"></span><span style="height:17px;background:var(--red)"></span><span style="height:14px;background:var(--gray)"></span><span style="height:9px;background:var(--gray)"></span>
+                </div>
+                <div>49</div>
+                <div>72</div>
+                <div>29</div>
+                <div><span class="badge bad">😵 overloaded caller</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1816</strong><div class="sub">26:42 • home office</div></div>
+                <div class="mini-wave">
+                  <span style="height:14px;background:var(--blue)"></span><span style="height:20px;background:var(--blue)"></span><span style="height:28px;background:var(--green)"></span><span style="height:34px;background:var(--green)"></span><span style="height:37px;background:var(--green)"></span><span style="height:25px;background:var(--amber)"></span><span style="height:15px;background:var(--gray)"></span><span style="height:10px;background:var(--gray)"></span>
+                </div>
+                <div>81</div>
+                <div>24</div>
+                <div>77</div>
+                <div><span class="badge good">🔥 strongest lead</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1810</strong><div class="sub">28:09 • mobile</div></div>
+                <div class="mini-wave">
+                  <span style="height:16px;background:var(--purple)"></span><span style="height:25px;background:var(--purple)"></span><span style="height:21px;background:var(--blue)"></span><span style="height:19px;background:var(--amber)"></span><span style="height:24px;background:var(--red)"></span><span style="height:29px;background:#38bdf8"></span><span style="height:17px;background:var(--gray)"></span><span style="height:11px;background:var(--gray)"></span>
+                </div>
+                <div>58</div>
+                <div>63</div>
+                <div>41</div>
+                <div><span class="badge warn">📶 bad connection moments</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1808</strong><div class="sub">33:18 • office</div></div>
+                <div class="mini-wave">
+                  <span style="height:10px;background:var(--blue)"></span><span style="height:16px;background:var(--blue)"></span><span style="height:21px;background:var(--green)"></span><span style="height:25px;background:var(--green)"></span><span style="height:28px;background:var(--amber)"></span><span style="height:34px;background:var(--red)"></span><span style="height:20px;background:var(--red)"></span><span style="height:12px;background:var(--gray)"></span>
+                </div>
+                <div>66</div>
+                <div>68</div>
+                <div>45</div>
+                <div><span class="badge warn">💸 pricing pushback</span></div>
+              </div>
+
+              <div class="row">
+                <div><strong>Call 1803</strong><div class="sub">25:56 • quiet room</div></div>
+                <div class="mini-wave">
+                  <span style="height:11px;background:var(--blue)"></span><span style="height:17px;background:var(--blue)"></span><span style="height:25px;background:var(--green)"></span><span style="height:31px;background:var(--green)"></span><span style="height:29px;background:var(--amber)"></span><span style="height:18px;background:var(--gray)"></span><span style="height:11px;background:var(--gray)"></span><span style="height:8px;background:var(--gray)"></span>
+                </div>
+                <div>78</div>
+                <div>22</div>
+                <div>70</div>
+                <div><span class="badge good">🙂 low-friction call</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <div class="card">
+              <div class="label">Group Summary</div>
+              <h2>What this batch shows</h2>
+              <div class="score-grid">
+                <div class="score">
+                  <div class="name">Avg confidence</div>
+                  <div class="value">68</div>
+                  <div class="hint">3 calls above 78</div>
+                </div>
+                <div class="score">
+                  <div class="name">Avg friction</div>
+                  <div class="value">49</div>
+                  <div class="hint">2 severe outliers</div>
+                </div>
+                <div class="score">
+                  <div class="name">Avg readiness</div>
+                  <div class="value">56</div>
+                  <div class="hint">mixed intent quality</div>
+                </div>
+                <div class="score">
+                  <div class="name">Noise anomalies</div>
+                  <div class="value">3</div>
+                  <div class="hint">transit or connection issues</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="label">Analyst Queue</div>
+              <h2>Calls to inspect next</h2>
+              <div class="sidebar-list">
+                <div class="side-item">
+                  <strong>Call 1831</strong>
+                  <div class="sub">High friction, low readiness, transit noise.</div>
+                </div>
+                <div class="side-item">
+                  <strong>Call 1821</strong>
+                  <div class="sub">Caller sounds overloaded; emotional recovery never happens.</div>
+                </div>
+                <div class="side-item">
+                  <strong>Call 1816</strong>
+                  <div class="sub">Best call in batch. Useful as a positive benchmark.</div>
+                </div>
+              </div>
+
+              <div class="legend">
+                <span><i class="dot" style="background: var(--purple)"></i> hesitation</span>
+                <span><i class="dot" style="background: var(--blue)"></i> calmness</span>
+                <span><i class="dot" style="background: var(--green)"></i> confidence</span>
+                <span><i class="dot" style="background: var(--amber)"></i> engagement</span>
+                <span><i class="dot" style="background: var(--red)"></i> friction</span>
+                <span><i class="dot" style="background: #38bdf8"></i> noise issue</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function showPanel(id, button) {
+        document.querySelectorAll(".panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === id);
+        });
+
+        document.querySelectorAll(".toggle-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+
+        button.classList.add("active");
+      }
+    </script>
+  </body>
+</html>
