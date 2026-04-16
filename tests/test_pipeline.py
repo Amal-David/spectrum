@@ -10,7 +10,8 @@ import numpy as np
 
 from spectrum_pipeline.importers import import_demo_pack
 from spectrum_pipeline.analyzer import analyze_audio_file
-from spectrum_pipeline.service import JOB_STAGE_COUNT, JobProgressReporter, SessionStore, apply_manual_role_overrides
+from spectrum_core.models import ProviderDecision
+from spectrum_pipeline.service import JOB_STAGE_COUNT, JobProgressReporter, SessionStore, TranscriptionOutcome, apply_manual_role_overrides
 
 
 def _write_test_wav(path: Path) -> None:
@@ -241,7 +242,7 @@ def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path
         ),
     )
 
-    analyze_audio_file(audio_path, analysis_mode="full", metadata={"source_type": "direct_audio_file"}, job_id="test-openai-human-ai")
+    analyze_audio_file(audio_path, analysis_mode="full", metadata={"source_type": "direct_audio_file", "provider_override": "openai"}, job_id="test-openai-human-ai")
 
     bundle_payload = json.loads((Path("runs") / "test-openai-human-ai" / "bundle.json").read_text())
     assert bundle_payload["speaker_roles"]["primary_human_speaker_id"] == "speaker_0"
@@ -250,6 +251,32 @@ def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path
     assert human_sentence["source"] == "model"
     assert any(signal["key"] == "hesitation" for signal in bundle_payload["signals"])
     assert bundle_payload["metrics"]["talk_ratio"]["value"] <= 1
+
+
+def test_local_asr_is_default_and_records_readiness(monkeypatch: Any, tmp_path: Path) -> None:
+    audio_path = tmp_path / "local-asr-default.wav"
+    _write_test_wav(audio_path)
+
+    monkeypatch.setattr(
+        "spectrum_pipeline.service.maybe_transcribe",
+        lambda job_id, audio_path, transcript_hint=None: TranscriptionOutcome(
+            transcript="hello there from the local whisper path",
+            words=[{"word": "hello", "start_ms": 0, "end_ms": 220, "confidence": 0.91, "source": "model"}],
+            warnings=[],
+            provider=ProviderDecision(kind="transcription", provider_key="faster_whisper", used=True, cached=False, status="ready", notes=[]),
+        ),
+    )
+    monkeypatch.setattr("spectrum_pipeline.service.openai_enabled", lambda: False)
+
+    analyze_audio_file(audio_path, analysis_mode="full", metadata={"source_type": "direct_audio_file"}, job_id="test-local-asr-default")
+
+    bundle_payload = json.loads((Path("runs") / "test-local-asr-default" / "bundle.json").read_text())
+    assert bundle_payload["content"]["transcript"] == "hello there from the local whisper path"
+    assert bundle_payload["content"]["words"]
+    assert bundle_payload["session"]["readiness_tier"] in {"partial", "transcript_only"}
+    provider_keys = [item["provider_key"] for item in bundle_payload["diagnostics"]["provider_decisions"]]
+    assert provider_keys[0] == "faster_whisper"
+    assert "oss_first_local_pipeline" in bundle_payload["diagnostics"]["fallback_logic"]
 
 
 def test_manual_role_override_rebuilds_bundle(tmp_path: Path) -> None:

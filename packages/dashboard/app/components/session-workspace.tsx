@@ -284,6 +284,9 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
   const [showAllSegments, setShowAllSegments] = useState(false);
   const deferredSearch = useDeferredValue(searchQuery.trim().toLowerCase());
   const durationMs = Math.max(1, Math.round(bundle.session.duration_sec * 1000));
+  const readinessTier = bundle.session.readiness_tier ?? "blocked";
+  const transcriptionDecision = bundle.diagnostics.provider_decisions?.find((decision) => decision.kind === "transcription");
+  const diarizationDecision = bundle.diagnostics.provider_decisions?.find((decision) => decision.kind === "diarization");
   const currentTimeMs = Math.round(currentTimeSec * 1000);
   const waveformWidth = Math.max(960, Math.round(Math.max(bundle.waveform.bucket_count, bundle.waveform.peaks.length, 320) * zoom * 2.6));
   const emotionOptions = bundle.content.view_summary.emotion_labels.length ? bundle.content.view_summary.emotion_labels : ["unlabeled"];
@@ -533,17 +536,23 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
             </span>
           </div>
 
-          {bundle.diarization.readiness_state === "blocked" ? (
+          {readinessTier === "transcript_only" || bundle.diarization.readiness_state === "blocked" ? (
             <div className="gate-banner">
-              <strong>Full diarized cue view unavailable for this upload.</strong>
-              <span className="microcopy">{bundle.diarization.notes.join(" ")}</span>
+              <strong>Transcript and quality analysis are ready. Speaker-attributed cues are limited for this upload.</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "The local transcript is still trustworthy, but speaker lanes and vocal-cue attribution need stronger diarization."}
+                {transcriptionDecision ? ` Transcript provider: ${transcriptionDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
             </div>
           ) : null}
 
-          {bundle.diarization.readiness_state === "fallback" ? (
+          {readinessTier === "partial" || bundle.diarization.readiness_state === "fallback" ? (
             <div className="gate-banner fallback">
-              <strong>Using degraded speaker coverage for this upload.</strong>
-              <span className="microcopy">{bundle.diarization.notes.join(" ")}</span>
+              <strong>Using limited speaker coverage for this upload.</strong>
+              <span className="microcopy">
+                {bundle.diarization.notes.join(" ") || "Transcript and timing are available now; speaker attribution remains provisional until stronger diarization is configured."}
+                {diarizationDecision ? ` Diarization path: ${diarizationDecision.provider_key.replaceAll("_", " ")}.` : ""}
+              </span>
             </div>
           ) : null}
 

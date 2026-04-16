@@ -177,7 +177,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
         profile, profile_display = build_profile("conversation_analytics", metadata, transcript, quality, speakers, ProcessSessionOptions(metadata=metadata))
         content = build_content(transcript, turns, metadata, quality, events, questions)
         environment = build_environment(metadata, quality, events, session_row["duration_ms"] / 1000)
-        diarization = build_diarization(job_id, Path("."), metadata, turns, adapters)
+        diarization, diarization_provider = build_diarization(job_id, Path("."), metadata, turns, adapters)
         speaker_roles = build_speaker_role_summary(speakers, turns, metadata)
         speakers, turns = apply_speaker_roles(speakers, turns, speaker_roles)
         spectrogram = SpectrogramArtifact(readiness_state="fallback", notes=["synthetic_session_has_no_rendered_spectrogram"])
@@ -188,6 +188,8 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
         diagnostics = Diagnostics(
             adapters=adapters,
             confidence_caveats=["demo_pack_synthetic"],
+            degraded_reasons=[],
+            provider_decisions=[diarization_provider],
             fallback_logic=["synthetic_session_import"],
         )
         source = DatasetReference(
@@ -265,6 +267,7 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
                 nonverbal_cues,
                 timeline_tracks,
             ),
+            readiness_tier="full",
         )
         persist_session_artifacts(
             job_id,

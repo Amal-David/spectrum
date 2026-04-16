@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sqlite3
 import subprocess
@@ -34,12 +35,14 @@ from spectrum_core.models import (
     MetricSummary,
     NonverbalCue,
     PredictionSource,
+    ProviderDecision,
     ProfileField,
     ProfileSummary,
     ProsodyPoint,
     ProsodyTrack,
     QualitySummary,
     QuestionAnalyticsRow,
+    ReadinessTier,
     SentenceEmotionSpan,
     SessionBundle,
     SessionDescriptor,
@@ -53,6 +56,7 @@ from spectrum_core.models import (
     SpectrogramArtifact,
     SpeakerSummary,
     StageStatus,
+    StageState,
     TokenEmotionSpan,
     TimeWindow,
     TimelineTrack,
@@ -127,6 +131,77 @@ JOB_STAGE_DEFINITIONS = [
 JOB_STAGE_INDEX = {stage["key"]: index + 1 for index, stage in enumerate(JOB_STAGE_DEFINITIONS)}
 JOB_STAGE_BY_KEY = {stage["key"]: stage for stage in JOB_STAGE_DEFINITIONS}
 JOB_STAGE_COUNT = len(JOB_STAGE_DEFINITIONS)
+
+
+@dataclass
+class TranscriptionOutcome:
+    transcript: str
+    words: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    provider: ProviderDecision = field(
+        default_factory=lambda: ProviderDecision(kind="transcription", provider_key="faster_whisper")
+    )
+
+
+def _provider_cache_path(job_id: str, kind: str) -> Path:
+    return run_file(job_id, f"{kind}.provider.json")
+
+
+def _load_provider_cache(job_id: str, kind: str) -> dict[str, Any] | None:
+    path = _provider_cache_path(job_id, kind)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return None
+
+
+def _save_provider_cache(job_id: str, kind: str, payload: dict[str, Any]) -> None:
+    _provider_cache_path(job_id, kind).write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _upload_provider_preference(metadata: dict[str, Any]) -> str:
+    explicit = str(metadata.get("provider_override") or metadata.get("transcription_provider") or "").strip().lower()
+    if explicit in {"local", "openai"}:
+        return explicit
+    env_value = os.environ.get("SPECTRUM_UPLOAD_PROVIDER", "local").strip().lower()
+    if env_value in {"local", "openai"}:
+        return env_value
+    return "local"
+
+
+def _normalize_provider_words(words: list[dict[str, Any]], *, source: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "word": str(word.get("word") or ""),
+            "start_ms": int(word.get("start_ms", word.get("start", 0))),
+            "end_ms": int(word.get("end_ms", word.get("end", 0))),
+            "confidence": float(word.get("confidence", 0.0)),
+            "source": source,
+            "speaker_id": word.get("speaker_id"),
+        }
+        for word in words
+        if str(word.get("word") or "").strip()
+    ]
+
+
+def _readiness_tier(transcript: str, diarization: DiarizationSummary) -> ReadinessTier:
+    if diarization.readiness_state == "ready" and transcript.strip():
+        return "full"
+    if diarization.readiness_state == "fallback" and transcript.strip():
+        return "partial"
+    if transcript.strip():
+        return "transcript_only"
+    return "blocked"
+
+
+def _quality_band(quality: QualitySummary) -> str:
+    if quality.noise_ratio >= 0.35 or not quality.is_usable:
+        return "risky"
+    if quality.noise_ratio >= 0.2:
+        return "watch"
+    return "clean"
 
 
 def _completed_percent_before(stage_key: str) -> int:
@@ -1091,13 +1166,34 @@ def _fallback_uploaded_segments(job_id: str, metadata: dict[str, Any], turns: li
     ]
 
 
-def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[Any]) -> tuple[list[DiarizationSegment], list[str]]:
+def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[Any]) -> tuple[list[DiarizationSegment], list[str], ProviderDecision]:
     pyannote = _adapter_lookup(adapters, "pyannote")
     if not pyannote or not pyannote.available or not pyannote.token_present:
-        return [], []
+        notes: list[str] = []
+        if pyannote and pyannote.available and not pyannote.token_present:
+            notes.append("pyannote_token_missing")
+        elif not pyannote or not pyannote.available:
+            notes.append("pyannote_unavailable")
+        return [], [], ProviderDecision(
+            kind="diarization",
+            provider_key="pyannote",
+            used=False,
+            cached=False,
+            status="blocked",
+            notes=notes,
+        )
+    cached = _load_provider_cache(job_id, "diarization")
+    if cached and cached.get("provider_key") == "pyannote":
+        segments = [DiarizationSegment.model_validate(item) for item in cached.get("segments", [])]
+        return segments, [], ProviderDecision(
+            kind="diarization",
+            provider_key="pyannote",
+            used=bool(segments),
+            cached=bool(segments),
+            status="ready" if segments else "fallback",
+            notes=["diarization_cache_reused"] if segments else [],
+        )
     try:  # pragma: no cover - optional runtime path
-        import os
-
         from pyannote.audio import Pipeline  # type: ignore
 
         token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
@@ -1119,9 +1215,29 @@ def _maybe_diarize_with_pyannote(audio_path: Path, job_id: str, adapters: list[A
                     label=str(speaker),
                 )
             )
-        return segments, []
+        _save_provider_cache(
+            job_id,
+            "diarization",
+            {"provider_key": "pyannote", "segments": [segment.model_dump(mode="json") for segment in segments]},
+        )
+        return segments, [], ProviderDecision(
+            kind="diarization",
+            provider_key="pyannote",
+            used=bool(segments),
+            cached=False,
+            status="ready" if segments else "fallback",
+            notes=[],
+        )
     except Exception as error:  # pragma: no cover - optional runtime path
-        return [], [f"pyannote_failed:{error.__class__.__name__}"]
+        failure = f"pyannote_failed:{error.__class__.__name__}"
+        return [], [failure], ProviderDecision(
+            kind="diarization",
+            provider_key="pyannote",
+            used=False,
+            cached=False,
+            status="fallback",
+            notes=[failure],
+        )
 
 
 def build_diarization(
@@ -1130,41 +1246,66 @@ def build_diarization(
     metadata: dict[str, Any],
     turns: list[TurnModel],
     adapters: list[Any],
-) -> DiarizationSummary:
+) -> tuple[DiarizationSummary, ProviderDecision]:
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     dataset_id = str(metadata.get("dataset_id") or "")
     benchmark_source = dataset_id in {"ami_corpus", "meld"} or bool(metadata.get("benchmark_diarization"))
     if benchmark_source:
         segments = _segments_from_metadata(job_id, metadata, turns, source="benchmark_label", confidence=0.96)
-        return DiarizationSummary(
-            readiness_state="ready" if segments else "fallback",
-            source="benchmark_label" if segments else "unavailable",
-            confidence=0.96 if segments else 0.0,
-            segments=segments,
-            overlap_windows=_overlap_windows_from_segments(segments),
-            notes=["Benchmark-aligned diarization metadata is driving the speaker lanes."],
+        status: StageState = "ready" if segments else "fallback"
+        return (
+            DiarizationSummary(
+                readiness_state=status,
+                source="benchmark_label" if segments else "unavailable",
+                confidence=0.96 if segments else 0.0,
+                segments=segments,
+                overlap_windows=_overlap_windows_from_segments(segments),
+                notes=["Benchmark-aligned diarization metadata is driving the speaker lanes."],
+            ),
+            ProviderDecision(
+                kind="diarization",
+                provider_key="benchmark_metadata",
+                used=bool(segments),
+                cached=False,
+                status=status,
+                notes=["benchmark_diarization"] if segments else ["benchmark_diarization_missing"],
+            ),
         )
 
     if source_type != "direct_audio_file":
         segments = _segments_from_metadata(job_id, metadata, turns, source="metadata_hint", confidence=0.7)
-        return DiarizationSummary(
-            readiness_state="ready" if segments else "fallback",
-            source="metadata_hint" if segments else "unavailable",
-            confidence=0.7 if segments else 0.0,
-            segments=segments,
-            overlap_windows=_overlap_windows_from_segments(segments),
-            notes=["Non-upload sources can reuse trusted metadata speaker spans when available."],
+        status: StageState = "ready" if segments else "fallback"
+        return (
+            DiarizationSummary(
+                readiness_state=status,
+                source="metadata_hint" if segments else "unavailable",
+                confidence=0.7 if segments else 0.0,
+                segments=segments,
+                overlap_windows=_overlap_windows_from_segments(segments),
+                notes=["Non-upload sources can reuse trusted metadata speaker spans when available."],
+            ),
+            ProviderDecision(
+                kind="diarization",
+                provider_key="metadata_hint",
+                used=bool(segments),
+                cached=False,
+                status=status,
+                notes=["metadata_diarization"] if segments else ["metadata_diarization_missing"],
+            ),
         )
 
-    segments, notes = _maybe_diarize_with_pyannote(audio_path, job_id, adapters)
+    segments, notes, provider = _maybe_diarize_with_pyannote(audio_path, job_id, adapters)
     if segments:
-        return DiarizationSummary(
-            readiness_state="ready",
-            source="model",
-            confidence=0.81,
-            segments=segments,
-            overlap_windows=_overlap_windows_from_segments(segments),
-            notes=notes or ["Pyannote supplied the uploaded diarization view."],
+        return (
+            DiarizationSummary(
+                readiness_state="ready",
+                source="model",
+                confidence=0.81,
+                segments=segments,
+                overlap_windows=_overlap_windows_from_segments(segments),
+                notes=notes or ["Pyannote supplied the uploaded diarization view."],
+            ),
+            provider,
         )
 
     pyannote = _adapter_lookup(adapters, "pyannote")
@@ -1184,25 +1325,45 @@ def build_diarization(
                 0,
                 "Pyannote speaker diarization is not available locally, so the upload is using a degraded speaker timeline.",
             )
-        return DiarizationSummary(
-            readiness_state="fallback",
-            source="heuristic",
-            confidence=round(sum(segment.confidence for segment in fallback_segments) / len(fallback_segments), 3),
-            segments=fallback_segments,
-            overlap_windows=_overlap_windows_from_segments(fallback_segments),
-            notes=[*fallback_notes, *notes],
+        return (
+            DiarizationSummary(
+                readiness_state="fallback",
+                source="heuristic",
+                confidence=round(sum(segment.confidence for segment in fallback_segments) / len(fallback_segments), 3),
+                segments=fallback_segments,
+                overlap_windows=_overlap_windows_from_segments(fallback_segments),
+                notes=[*fallback_notes, *notes],
+            ),
+            ProviderDecision(
+                kind="diarization",
+                provider_key="heuristic_fallback",
+                used=True,
+                cached=False,
+                status="fallback",
+                notes=["diarization_fallback_segments", *provider.notes],
+            ),
         )
 
     gate_note = "Full diarized cue view requires pyannote speaker diarization on uploaded audio."
     if pyannote and pyannote.available and not pyannote.token_present:
         gate_note = "Pyannote is installed, but the Hugging Face token or model access is missing for uploaded diarization."
-    return DiarizationSummary(
-        readiness_state="blocked",
-        source="unavailable",
-        confidence=0.0,
-        segments=[],
-        overlap_windows=[],
-        notes=[gate_note, *notes],
+    return (
+        DiarizationSummary(
+            readiness_state="blocked",
+            source="unavailable",
+            confidence=0.0,
+            segments=[],
+            overlap_windows=[],
+            notes=[gate_note, *notes],
+        ),
+        ProviderDecision(
+            kind="diarization",
+            provider_key="pyannote",
+            used=False,
+            cached=False,
+            status="blocked",
+            notes=["diarization_blocked", *provider.notes],
+        ),
     )
 
 
@@ -1257,26 +1418,47 @@ def _metadata_turns(turns: list[TurnModel]) -> list[dict[str, Any]]:
     ]
 
 
-def enrich_metadata_with_openai(job_id: str, audio_path: Path, metadata: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def enrich_metadata_with_openai(job_id: str, audio_path: Path, metadata: dict[str, Any]) -> tuple[dict[str, Any], list[str], ProviderDecision]:
     if not openai_enabled():
-        return {}, ["openai_not_configured"]
+        return {}, ["openai_not_configured"], ProviderDecision(
+            kind="role_analysis",
+            provider_key="openai_audio_analysis",
+            used=False,
+            cached=False,
+            status="blocked",
+            notes=["openai_not_configured"],
+        )
     source_type = str(metadata.get("source_type") or "direct_audio_file")
     if source_type != "direct_audio_file":
-        return {}, ["openai_skipped_for_non_upload"]
+        return {}, ["openai_skipped_for_non_upload"], ProviderDecision(
+            kind="role_analysis",
+            provider_key="openai_audio_analysis",
+            used=False,
+            cached=False,
+            status="missing",
+            notes=["openai_skipped_for_non_upload"],
+        )
 
     warnings: list[str] = []
     updates: dict[str, Any] = {}
     transcription, transcription_warnings = transcribe_audio_with_openai(audio_path)
     warnings.extend(transcription_warnings)
     if not transcription:
-        return {}, warnings
+        return {}, warnings, ProviderDecision(
+            kind="role_analysis",
+            provider_key="openai_audio_analysis",
+            used=False,
+            cached=False,
+            status="fallback",
+            notes=list(warnings),
+        )
 
     transcript = str(transcription.get("transcript") or "").strip()
     if transcript:
         updates["transcript_hint"] = transcript
     raw_words = list(transcription.get("words") or [])
     if raw_words:
-        updates["openai_word_timestamps"] = [
+        normalized_words = [
             {
                 "word": str(word.get("word") or ""),
                 "start_ms": int(float(word.get("start", 0.0)) * 1000),
@@ -1288,6 +1470,8 @@ def enrich_metadata_with_openai(job_id: str, audio_path: Path, metadata: dict[st
             for word in raw_words
             if str(word.get("word") or "").strip()
         ]
+        updates["openai_word_timestamps"] = normalized_words
+        updates["transcript_word_timestamps"] = normalized_words
         if any(word.get("speaker") is not None for word in raw_words):
             updates["speaker_segments"] = _group_openai_words_into_segments(job_id, raw_words)
 
@@ -1328,7 +1512,28 @@ def enrich_metadata_with_openai(job_id: str, audio_path: Path, metadata: dict[st
         updates["openai_human_summary"] = str(analysis.get("human_summary") or "")
     updates["openai_provider_used"] = True
     updates["openai_provider_warnings"] = warnings
-    return updates, warnings
+    _save_provider_cache(
+        job_id,
+        "openai-role-analysis",
+        {
+            "provider_key": "openai_audio_analysis",
+            "warnings": warnings,
+            "transcription_model": transcription.get("model"),
+            "analysis_model": analysis.get("model") if analysis else None,
+        },
+    )
+    return (
+        updates,
+        warnings,
+        ProviderDecision(
+            kind="role_analysis",
+            provider_key="openai_audio_analysis",
+            used=bool(transcript or analysis),
+            cached=False,
+            status="ready" if transcript or analysis else "fallback",
+            notes=list(warnings),
+        ),
+    )
 
 
 def build_speaker_role_summary(
@@ -1753,34 +1958,130 @@ def naive_lang_mix(transcript: str, language_hint: str | None = None) -> LangMix
     return LangMixPrediction(label="unknown")
 
 
-def maybe_transcribe(audio_path: Path, transcript_hint: str | None = None) -> tuple[str, list[str]]:
+def maybe_transcribe(job_id: str, audio_path: Path, transcript_hint: str | None = None) -> TranscriptionOutcome:
     warnings: list[str] = []
+    cached = _load_provider_cache(job_id, "transcription")
+    if cached and cached.get("provider_key") == "faster_whisper":
+        words = _normalize_provider_words(list(cached.get("words", [])), source="model")
+        transcript = str(cached.get("transcript") or "")
+        return TranscriptionOutcome(
+            transcript=transcript,
+            words=words,
+            warnings=[],
+            provider=ProviderDecision(
+                kind="transcription",
+                provider_key="faster_whisper",
+                used=bool(transcript),
+                cached=True,
+                status="ready" if transcript else "fallback",
+                notes=["transcription_cache_reused"],
+            ),
+        )
     try:
         from faster_whisper import WhisperModel  # type: ignore
     except ImportError:
         if transcript_hint:
-            return transcript_hint, ["transcript_hint_used", "faster_whisper_unavailable"]
-        return "", ["faster_whisper_unavailable"]
-
-    import os
-
-    if transcript_hint and os.environ.get("SPECTRUM_ENABLE_ASR", "0") != "1":
-        return transcript_hint, ["transcript_hint_used", "faster_whisper_available_but_disabled"]
+            return TranscriptionOutcome(
+                transcript=transcript_hint,
+                warnings=["transcript_hint_used", "faster_whisper_unavailable"],
+                provider=ProviderDecision(
+                    kind="transcription",
+                    provider_key="transcript_hint",
+                    used=True,
+                    cached=False,
+                    status="fallback",
+                    notes=["transcript_hint_used", "faster_whisper_unavailable"],
+                ),
+            )
+        return TranscriptionOutcome(
+            transcript="",
+            warnings=["faster_whisper_unavailable"],
+            provider=ProviderDecision(
+                kind="transcription",
+                provider_key="faster_whisper",
+                used=False,
+                cached=False,
+                status="blocked",
+                notes=["faster_whisper_unavailable"],
+            ),
+        )
 
     try:
         model_name = os.environ.get("SPECTRUM_WHISPER_MODEL", "tiny")
         model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segments, _ = model.transcribe(str(audio_path), vad_filter=True)
-        transcript = " ".join(segment.text.strip() for segment in segments if segment.text.strip())
+        segments, _ = model.transcribe(str(audio_path), vad_filter=True, word_timestamps=True)
+        segment_list = list(segments)
+        transcript = " ".join(segment.text.strip() for segment in segment_list if segment.text.strip())
+        words: list[dict[str, Any]] = []
+        for segment in segment_list:
+            for word in list(getattr(segment, "words", []) or []):
+                text = str(getattr(word, "word", "") or "").strip()
+                if not text:
+                    continue
+                words.append(
+                    {
+                        "word": text,
+                        "start_ms": int(float(getattr(word, "start", 0.0)) * 1000),
+                        "end_ms": int(float(getattr(word, "end", 0.0)) * 1000),
+                        "confidence": float(getattr(word, "probability", getattr(word, "confidence", 0.0)) or 0.0),
+                        "source": "model",
+                    }
+                )
         if transcript:
-            return transcript, warnings
+            _save_provider_cache(
+                job_id,
+                "transcription",
+                {
+                    "provider_key": "faster_whisper",
+                    "model": model_name,
+                    "transcript": transcript,
+                    "words": words,
+                },
+            )
+            return TranscriptionOutcome(
+                transcript=transcript,
+                words=words,
+                warnings=warnings,
+                provider=ProviderDecision(
+                    kind="transcription",
+                    provider_key="faster_whisper",
+                    used=True,
+                    cached=False,
+                    status="ready",
+                    notes=[],
+                ),
+            )
     except Exception as error:  # pragma: no cover
         warnings.append(f"faster_whisper_failed:{error.__class__.__name__}")
 
     if transcript_hint:
         warnings.append("transcript_hint_used")
-        return transcript_hint, warnings
-    return "", warnings or ["faster_whisper_available_but_empty"]
+        return TranscriptionOutcome(
+            transcript=transcript_hint,
+            warnings=warnings,
+            provider=ProviderDecision(
+                kind="transcription",
+                provider_key="transcript_hint",
+                used=True,
+                cached=False,
+                status="fallback",
+                notes=list(warnings),
+            ),
+        )
+    warnings = warnings or ["faster_whisper_available_but_empty"]
+    return TranscriptionOutcome(
+        transcript="",
+        words=[],
+        warnings=warnings,
+        provider=ProviderDecision(
+            kind="transcription",
+            provider_key="faster_whisper",
+            used=False,
+            cached=False,
+            status="fallback",
+            notes=list(warnings),
+        ),
+    )
 
 
 def build_quality(audio_path: Path, analysis_mode: AnalysisMode, silences: list[tuple[float, float]], metadata: dict[str, Any]) -> QualitySummary:
@@ -2872,6 +3173,7 @@ def build_session_bundle(
     questions: list[QuestionAnalyticsRow],
     signals: list[SignalCard],
     stage_status: list[StageStatus],
+    readiness_tier: ReadinessTier,
 ) -> SessionBundle:
     return SessionBundle(
         session=SessionDescriptor(
@@ -2889,6 +3191,7 @@ def build_session_bundle(
             duration_sec=result.duration_sec,
             speaker_count=result.speaker_count,
             status="completed",
+            readiness_tier=readiness_tier,
         ),
         source=result.source,
         artifacts=result.artifacts,
@@ -2984,19 +3287,42 @@ def create_session_result(
         progress("normalize", JOB_STAGE_BY_KEY["normalize"]["label"])
     normalize_audio(original_path, normalized_path)
     render_telephony_audio(original_path, telephony_path)
-    openai_updates, openai_warnings = enrich_metadata_with_openai(job_id, normalized_path, metadata)
-    if openai_updates:
-        metadata = {**metadata, **openai_updates}
     duration_sec = probe_duration(normalized_path)
     silences = detect_silences(normalized_path)
-    transcript, transcript_warnings = maybe_transcribe(normalized_path, transcript_hint=metadata.get("transcript_hint"))
+    provider_preference = _upload_provider_preference(metadata)
+    openai_warnings: list[str] = []
+    role_provider_decision = ProviderDecision(kind="role_analysis", provider_key="heuristic", used=True, cached=False, status="fallback", notes=["heuristic_role_analysis"])
+    if provider_preference == "openai":
+        openai_updates, openai_warnings, role_provider_decision = enrich_metadata_with_openai(job_id, normalized_path, metadata)
+        if openai_updates:
+            metadata = {**metadata, **openai_updates}
+        transcription_provider = ProviderDecision(
+            kind="transcription",
+            provider_key="openai_audio_analysis",
+            used=bool(metadata.get("transcript_hint")),
+            cached=False,
+            status="ready" if metadata.get("transcript_hint") else "fallback",
+            notes=list(openai_warnings),
+        )
+        transcript_outcome = TranscriptionOutcome(
+            transcript=str(metadata.get("transcript_hint") or ""),
+            words=_normalize_provider_words(list(metadata.get("transcript_word_timestamps", [])), source="model"),
+            warnings=list(openai_warnings),
+            provider=transcription_provider,
+        )
+    else:
+        transcript_outcome = maybe_transcribe(job_id, normalized_path, transcript_hint=metadata.get("transcript_hint"))
+        if transcript_outcome.words:
+            metadata = {**metadata, "transcript_word_timestamps": transcript_outcome.words}
+    transcript = transcript_outcome.transcript
+    transcript_warnings = transcript_outcome.warnings
     turns = build_turns_from_metadata(job_id, duration_sec, transcript, metadata, analysis_mode)
     if not transcript and turns:
         transcript = " ".join(turn.text for turn in turns if turn.text).strip()
     adapters = build_adapter_inventory()
     if progress:
         progress("diarization", JOB_STAGE_BY_KEY["diarization"]["label"])
-    diarization = build_diarization(job_id, normalized_path, metadata, turns, adapters)
+    diarization, diarization_provider = build_diarization(job_id, normalized_path, metadata, turns, adapters)
     if progress:
         progress("waveform_visuals", JOB_STAGE_BY_KEY["waveform_visuals"]["label"])
     waveform = build_waveform_artifact(normalized_path, duration_sec)
@@ -3020,6 +3346,15 @@ def create_session_result(
     if progress:
         progress("speaker_roles", JOB_STAGE_BY_KEY["speaker_roles"]["label"])
     speaker_roles = build_speaker_role_summary(speakers, turns, metadata)
+    if metadata.get("speaker_role_hint_source") == "model":
+        role_provider_decision = ProviderDecision(
+            kind="role_analysis",
+            provider_key="openai_audio_analysis",
+            used=True,
+            cached=False,
+            status="ready",
+            notes=list(metadata.get("openai_provider_warnings", [])),
+        )
     speakers, turns = apply_speaker_roles(speakers, turns, speaker_roles)
     events = build_events(job_id, turns, silences, quality, duration_sec, metadata)
     diagnostics = Diagnostics(
@@ -3027,6 +3362,29 @@ def create_session_result(
         enabled_comparisons=[adapter.key for adapter in adapters if adapter.comparison_only and adapter.available and options.enable_comparisons],
         license_warnings=[adapter.warning for adapter in adapters if adapter.prototype_only and options.prototype_noncommercial and adapter.warning],
         confidence_caveats=sorted(set(transcript_warnings + openai_warnings + quality.warning_flags)),
+        degraded_reasons=sorted(
+            {
+                *transcript_warnings,
+                *openai_warnings,
+                *diarization_provider.notes,
+                *(
+                    ["transcript_missing_after_asr"]
+                    if not transcript.strip()
+                    else []
+                ),
+                *(
+                    ["quality_low_snr"]
+                    if quality.avg_snr_db is not None and quality.avg_snr_db < 10
+                    else []
+                ),
+                *(
+                    ["quality_high_noise_ratio"]
+                    if quality.noise_ratio > 0.35
+                    else []
+                ),
+            }
+        ),
+        provider_decisions=[transcript_outcome.provider, diarization_provider, role_provider_decision],
         fallback_logic=[
             "ffmpeg_silence_analysis",
             "heuristic_question_mapping",
@@ -3034,7 +3392,7 @@ def create_session_result(
             "sentence_emotion_heuristics",
             "waveform_peak_decimation",
             "heuristic_prosody_tracks",
-            "openai_provider_fallback" if metadata.get("openai_provider_used") else "local_only_pipeline",
+            "openai_provider_override" if provider_preference == "openai" else "oss_first_local_pipeline",
         ],
     )
     if options.prototype_noncommercial:
@@ -3130,6 +3488,7 @@ def create_session_result(
         nonverbal_cues,
         timeline_tracks,
     )
+    readiness_tier = _readiness_tier(transcript, diarization)
     bundle = build_session_bundle(
         result,
         session_title=str(metadata.get("title") or original_path.stem.replace("_", " ").title()),
@@ -3151,6 +3510,7 @@ def create_session_result(
         questions=questions,
         signals=signals,
         stage_status=stage_status,
+        readiness_tier=readiness_tier,
     )
     if progress:
         progress("persist", JOB_STAGE_BY_KEY["persist"]["label"])
@@ -3186,7 +3546,14 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
     content = build_content(result.transcript, turns, metadata, result.quality, result.events, questions)
     adapters = result.diagnostics.adapters
     normalized_path = Path(result.artifacts.normalized_audio_path) if result.artifacts.normalized_audio_path else None
-    diarization = build_diarization(result.job_id, normalized_path or Path(result.artifacts.original_audio_path or ""), metadata, turns, adapters) if normalized_path or result.artifacts.original_audio_path else DiarizationSummary()
+    diarization, diarization_provider = (
+        build_diarization(result.job_id, normalized_path or Path(result.artifacts.original_audio_path or ""), metadata, turns, adapters)
+        if normalized_path or result.artifacts.original_audio_path
+        else (
+            DiarizationSummary(),
+            ProviderDecision(kind="diarization", provider_key="unavailable", used=False, cached=False, status="missing", notes=["no_audio_for_diarization"]),
+        )
+    )
     waveform = build_waveform_artifact(normalized_path, result.duration_sec) if normalized_path and normalized_path.exists() else WaveformArtifact(duration_ms=int(result.duration_sec * 1000))
     spectrogram_path = result.artifacts.spectrogram_path if result.artifacts.spectrogram_path else None
     spectrogram = SpectrogramArtifact(
@@ -3218,6 +3585,26 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         timeline_tracks,
     )
     rebuilt_result = result.model_copy(update={"speakers": speakers, "turns": turns, "metrics": metrics})
+    if not rebuilt_result.diagnostics.provider_decisions:
+        rebuilt_result.diagnostics.provider_decisions = [
+            ProviderDecision(
+                kind="transcription",
+                provider_key="transcript_hint" if metadata.get("transcript_hint") else "unknown",
+                used=bool(result.transcript),
+                cached=False,
+                status="ready" if result.transcript else "fallback",
+                notes=[],
+            ),
+            diarization_provider,
+            ProviderDecision(
+                kind="role_analysis",
+                provider_key="heuristic",
+                used=True,
+                cached=False,
+                status="fallback",
+                notes=["heuristic_role_analysis"],
+            ),
+        ]
     return build_session_bundle(
         rebuilt_result,
         session_title=str(metadata.get("title") or (result.source.metadata.get("title") if result.source and result.source.metadata else None) or result.job_id),
@@ -3239,6 +3626,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         questions=questions,
         signals=signals,
         stage_status=stage_status,
+        readiness_tier=_readiness_tier(result.transcript, diarization),
     )
 
 
@@ -3281,7 +3669,7 @@ def _severity_from_value(value: Any) -> str:
 
 def _build_word_timestamps(turns: list[TurnModel], transcript: str, metadata: dict[str, Any] | None = None) -> list[WordTimestamp]:
     metadata = metadata or {}
-    provider_words = list(metadata.get("openai_word_timestamps", []))
+    provider_words = list(metadata.get("transcript_word_timestamps", [])) or list(metadata.get("openai_word_timestamps", []))
     if provider_words:
         return [
             WordTimestamp(

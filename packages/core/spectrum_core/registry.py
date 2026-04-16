@@ -80,7 +80,7 @@ ADAPTER_SPECS = [
         "name": "OpenAI Audio Analysis",
         "category": "provider",
         "license_class": "Hosted API",
-        "enabled_by_default": True,
+        "enabled_by_default": False,
         "token_required": True,
         "env_key": "OPENAI_API_KEY",
         "warning": "Requires a local OPENAI_API_KEY for diarized transcription and human-vs-AI role analysis.",

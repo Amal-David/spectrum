@@ -10,7 +10,7 @@ function stageCoverageLabel(readyCount: number, total: number) {
 
 export default function HomePage() {
   const snapshot = loadDashboardSnapshot();
-  const { bundles, datasets, totals, alerts } = snapshot;
+  const { bundles, datasets, totals, cohorts, benchmarks } = snapshot;
   const defaultCompareIds = bundles.slice(0, 2).map((bundle) => bundle.session.session_id).join(",");
   const cleanRuns = bundles.filter((bundle) => bundle.quality.noise_ratio < 0.2).length;
   const watchRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.2 && bundle.quality.noise_ratio < 0.35).length;
@@ -60,6 +60,32 @@ export default function HomePage() {
 
       <AnalyzeAudioPanel />
 
+      <section className="panel panel-spacious">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow muted">Cohort Dashboard</span>
+            <h2>Product-ops baseline across saved bundles</h2>
+          </div>
+          <span className="microcopy">Default filters: all dates, all sources, all languages, all readiness tiers.</span>
+        </div>
+        <div className="badge-row">
+          <span className="badge accent">All date windows</span>
+          <span className="badge">All source types</span>
+          <span className="badge">All analysis modes</span>
+          <span className="badge">All languages</span>
+          <span className="badge">All duration bands</span>
+          <span className="badge">All quality bands</span>
+        </div>
+        <div className="ribbon-grid" style={{ marginTop: 18 }}>
+          {cohorts.kpis.map((kpi) => (
+            <article className="ribbon-card" key={kpi.key}>
+              <span className="sample-meta">{kpi.label}</span>
+              <strong>{formatMetric(kpi.value, kpi.unit)}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="ribbon-grid">
         <article className="ribbon-card">
           <span className="sample-meta">Quality distribution</span>
@@ -101,23 +127,95 @@ export default function HomePage() {
             <div className="section-heading">
               <div>
                 <span className="eyebrow muted">Overview</span>
-                <h2>Top risk and signal watchlist</h2>
+                <h2>Cohort trendline</h2>
               </div>
-              <span className="microcopy">Signals inherit explainability masks when quality or VAD is unstable.</span>
+              <span className="microcopy">Daily bundle rollups keep human hesitation, friction, rapport, and frustration in one scan line.</span>
+            </div>
+            <div className="table-shell">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th>Runs</th>
+                    <th>Usable</th>
+                    <th>Avg SNR</th>
+                    <th>Hesitation</th>
+                    <th>Friction</th>
+                    <th>Rapport</th>
+                    <th>Frustration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cohorts.trends.length ? (
+                    cohorts.trends.map((trend) => (
+                      <tr key={trend.bucket}>
+                        <td><strong>{trend.bucket}</strong></td>
+                        <td>{trend.run_count}</td>
+                        <td>{formatMetric(trend.usable_run_rate, "%")}</td>
+                        <td>{formatMetric(trend.avg_snr_db, "dB")}</td>
+                        <td>{Math.round(trend.hesitation_avg)}</td>
+                        <td>{Math.round(trend.friction_avg)}</td>
+                        <td>{Math.round(trend.rapport_avg)}</td>
+                        <td>{Math.round(trend.frustration_avg)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8}><div className="empty-state">Import or bootstrap a few sessions to populate cohort trends.</div></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="panel panel-spacious">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow muted">Distributions</span>
+                <h2>Cohort mixes and long-call drift</h2>
+              </div>
+              <span className="microcopy">Quality bands, source mix, duration mix, dominant human emotions, and first/middle/final third summaries.</span>
             </div>
             <div className="alert-grid">
-              {alerts.length ? (
-                alerts.map((alert) => (
-                  <Link href={`/sessions/${alert.session_id}`} className="alert-card" key={`${alert.session_id}-${alert.metric}`}>
-                    <span className="badge warn">{alert.metric}</span>
-                    <h3>{alert.title}</h3>
-                    <strong>{alert.value}/100</strong>
-                    <p>{alert.summary}</p>
-                  </Link>
-                ))
-              ) : (
-                <div className="empty-state">Import or bootstrap a few sessions to populate the risk watchlist.</div>
-              )}
+              {cohorts.distributions.map((distribution) => (
+                <article className="alert-card" key={distribution.key}>
+                  <span className="badge accent">{distribution.label}</span>
+                  <div className="badge-row">
+                    {distribution.items.slice(0, 6).map((item) => (
+                      <span className="badge" key={`${distribution.key}-${item.key}`}>
+                        {item.label} {item.value}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="table-shell" style={{ marginTop: 18 }}>
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Phase</th>
+                    <th>Hesitation</th>
+                    <th>Friction</th>
+                    <th>Rapport</th>
+                    <th>Frustration</th>
+                    <th>Dominant emotion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cohorts.phase_summaries.map((phase) => (
+                    <tr key={phase.phase}>
+                      <td><strong>{phase.phase.replaceAll("_", " ")}</strong></td>
+                      <td>{Math.round(phase.hesitation_avg)}</td>
+                      <td>{Math.round(phase.friction_avg)}</td>
+                      <td>{Math.round(phase.rapport_avg)}</td>
+                      <td>{Math.round(phase.frustration_avg)}</td>
+                      <td>{phase.dominant_emotion}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -290,6 +388,47 @@ export default function HomePage() {
                   </span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="panel panel-spacious">
+            <span className="eyebrow muted">Benchmarks</span>
+            <h2>Capability and quality coverage</h2>
+            <div className="table-shell">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Dataset</th>
+                    <th>Status</th>
+                    <th>Tasks</th>
+                    <th>Current metric snapshot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {benchmarks.registry.map((entry) => {
+                    const matching = benchmarks.results.filter((result) => result.dataset_id === entry.dataset_id);
+                    return (
+                      <tr key={entry.benchmark_id}>
+                        <td>
+                          <strong>{entry.title}</strong>
+                          <div className="microcopy">{entry.dataset_id}</div>
+                        </td>
+                        <td><span className={`badge ${entry.status === "ready" ? "ok" : "warn"}`}>{entry.status}</span></td>
+                        <td>{entry.tasks.map((task) => task.label).join(", ")}</td>
+                        <td>
+                          <div className="badge-row">
+                            {matching.slice(0, 3).map((result) => (
+                              <span className="badge" key={result.benchmark_id}>
+                                {result.task_type}: {result.metrics[0] ? formatMetric(result.metrics[0].value) : result.status}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </section>
         </aside>
