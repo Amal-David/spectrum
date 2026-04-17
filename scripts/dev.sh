@@ -13,4 +13,9 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-wait -n "$api_pid" "$dashboard_pid"
+while kill -0 "$api_pid" 2>/dev/null && kill -0 "$dashboard_pid" 2>/dev/null; do
+  sleep 1
+done
+
+wait "$api_pid" 2>/dev/null || true
+wait "$dashboard_pid" 2>/dev/null || true
