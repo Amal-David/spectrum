@@ -20,6 +20,14 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--analysis-mode", choices=["voice_profile", "conversation_analytics", "full"], default="full")
     analyze.add_argument("--title", help="Optional session title override")
     analyze.add_argument("--language", help="Optional language hint")
+    analyze.add_argument("--call-scenario", help="Human-AI call scenario for the conversation report")
+    analyze.add_argument("--agent-version", help="Agent or application version label for the conversation report")
+    analyze.add_argument("--prompt-version", help="Prompt/version label for the conversation report")
+    analyze.add_argument("--expected-user-goal", help="Expected human goal for the call")
+    analyze.add_argument("--expected-successful-outcome", help="What a successful call should accomplish")
+    analyze.add_argument("--known-failure-note", help="Known failure hypothesis to preserve in report context")
+    analyze.add_argument("--human-speaker-hint", help="Speaker id that should be treated as human, for example speaker_0")
+    analyze.add_argument("--ai-speaker-hint", help="Speaker id that should be treated as AI, for example speaker_1")
     analyze.add_argument("--dashboard-url", default="http://127.0.0.1:3000", help="Dashboard base URL for --open")
     analyze.add_argument("--open", action="store_true", help="Open the resulting session in the browser")
 
@@ -52,6 +60,19 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     }
     if args.language:
         metadata["language_hint"] = args.language
+    for arg_name, metadata_key in [
+        ("call_scenario", "call_scenario"),
+        ("agent_version", "agent_version"),
+        ("prompt_version", "prompt_version"),
+        ("expected_user_goal", "expected_user_goal"),
+        ("expected_successful_outcome", "expected_successful_outcome"),
+        ("known_failure_note", "known_failure_note"),
+        ("human_speaker_hint", "human_speaker_hint"),
+        ("ai_speaker_hint", "ai_speaker_hint"),
+    ]:
+        value = getattr(args, arg_name)
+        if value:
+            metadata[metadata_key] = value
 
     result = create_session_result(
         job_id=job_id,

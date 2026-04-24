@@ -1,0 +1,912 @@
+{
+  "generated_at": "2026-04-24",
+  "purpose": "Synthetic sample data for showing comprehensive Spectrum human-AI conversation reports across common voice-agent domains.",
+  "research_summary": {
+    "top_conversation_types": [
+      {
+        "rank": 1,
+        "type": "Customer support and issue resolution",
+        "why_it_matters": "High-volume support calls are the most common place teams test voice agents because the intent set is repetitive but user frustration is visible when resolution fails."
+      },
+      {
+        "rank": 2,
+        "type": "Appointment scheduling, reminders, and rescheduling",
+        "why_it_matters": "Scheduling calls have clear success criteria, system-of-record dependencies, and measurable failure modes such as no-shows or unresolved booking."
+      },
+      {
+        "rank": 3,
+        "type": "Outbound sales follow-up and lead qualification",
+        "why_it_matters": "Warm-lead follow-up is a common outbound pattern because timing, consent, qualification, and handoff quality all determine whether automation helps or harms conversion."
+      },
+      {
+        "rank": 4,
+        "type": "Billing, payment reminders, and collections follow-up",
+        "why_it_matters": "Payment conversations are operationally valuable but sensitive, so the report must surface empathy, compliance, escalation, and clarity risks."
+      },
+      {
+        "rank": 5,
+        "type": "Surveys, feedback, and post-service checks",
+        "why_it_matters": "Feedback calls are structured, measurable, and useful for analytics, but they still fail when the agent talks too much or misses sentiment shifts."
+      }
+    ],
+    "sources": [
+      {
+        "label": "AGIX Technologies AI voice agents guide",
+        "url": "https://agixtech.com/blog/ai-voice-agents-complete-guide/"
+      },
+      {
+        "label": "Cresta customer support voice AI use cases",
+        "url": "https://cresta.com/guides/ai-voice-agents-customer-support"
+      },
+      {
+        "label": "QuickVoice inbound vs outbound AI voice agents guide",
+        "url": "https://www.quickvoice.co/blog/inbound-vs-outbound-ai-voice-agents"
+      },
+      {
+        "label": "VoiceInfra outbound call automation use cases",
+        "url": "https://voiceinfra.ai/use-cases/outbound-call-automation"
+      },
+      {
+        "label": "Deepgram 2025 State of Voice AI report",
+        "url": "https://6890003.fs1.hubspotusercontent-na1.net/hubfs/6890003/2025%20State%20of%20Voice%20AI%20Report-Deepgram.pdf"
+      }
+    ]
+  },
+  "reports": [
+    {
+      "session_id": "sample-support-wismo-001",
+      "domain": "Customer Support",
+      "scenario": "Inbound order-status support call where the human wants an exact delivery answer.",
+      "agent_version": "support-agent-v18",
+      "expected_user_goal": "Get a clear order status and next step in under two minutes.",
+      "conversation_report": {
+        "report_version": "0.1",
+        "report_type": "human_ai_diagnostic",
+        "executive_summary": {
+          "overall_diagnosis": "The agent identified the order-status intent, but delayed the lookup, repeated authentication, and never converted the tracking data into a clear promise.",
+          "call_outcome": "needs_product_review",
+          "top_risks": [
+            "User waited through a long tool gap",
+            "Authentication loop repeated without explanation",
+            "Intent was only partially resolved"
+          ],
+          "confidence": 0.84,
+          "recommended_next_action": "Inspect the lookup/tool trace and redesign the authentication recovery path before comparing this agent version against production calls."
+        },
+        "findings": [
+          {
+            "finding_id": "sample-support-wismo-001-finding-1",
+            "category": "agent_latency",
+            "title": "Tool lookup created a visible dead-air gap",
+            "severity": "risk",
+            "confidence": 0.88,
+            "claim": "The AI took 7200 ms to respond after the user provided the order number.",
+            "impact": "The user filled the silence with uncertainty and asked whether the agent was still there.",
+            "likely_cause": "Order lookup or ASR finalization blocked the response without a filler or progress phrase.",
+            "time_window": {
+              "start_ms": 18500,
+              "end_ms": 27000,
+              "label": "order lookup gap"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "support-human-3",
+                "label": "user gives order number"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "support-ai-4",
+                "label": "late AI response"
+              }
+            ],
+            "related_metrics": {
+              "latency_ms": 7200,
+              "human_uncertainty_markers": 2,
+              "tool_gap_count": 1
+            },
+            "suggested_next_check": "Replay the gap and check whether the agent can acknowledge lookup progress after 1500 ms.",
+            "source": "hybrid"
+          },
+          {
+            "finding_id": "sample-support-wismo-001-finding-2",
+            "category": "clarification_loop",
+            "title": "Authentication loop repeated the same request",
+            "severity": "risk",
+            "confidence": 0.79,
+            "claim": "The AI asked for identity confirmation twice after the user had already provided the required account detail.",
+            "impact": "The user had to repeat information, which increases abandonment and undermines trust.",
+            "likely_cause": "The agent did not persist the prior slot fill after a failed lookup response.",
+            "time_window": {
+              "start_ms": 31000,
+              "end_ms": 45500,
+              "label": "authentication loop"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "support-ai-5",
+                "label": "repeat auth prompt"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "support-human-5",
+                "label": "user repeats detail"
+              }
+            ],
+            "related_metrics": {
+              "repeat_prompt_count": 2,
+              "slot_reuse_failure": true
+            },
+            "suggested_next_check": "Check slot memory and validation behavior after the first authentication attempt.",
+            "source": "deterministic"
+          },
+          {
+            "finding_id": "sample-support-wismo-001-finding-3",
+            "category": "intent_resolution",
+            "title": "Order status was not translated into a customer-ready answer",
+            "severity": "risk",
+            "confidence": 0.81,
+            "claim": "The agent found a shipping event but ended with an ambiguous 'it should update soon' instead of a concrete next step.",
+            "impact": "The user still does not know whether to wait, contact support, or expect delivery.",
+            "likely_cause": "The agent lacked an outcome policy for delayed carrier scans.",
+            "time_window": {
+              "start_ms": 49500,
+              "end_ms": 64000,
+              "label": "resolution attempt"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "support-ai-7",
+                "label": "ambiguous answer"
+              }
+            ],
+            "related_metrics": {
+              "resolution_score": 42,
+              "directness_score": 48
+            },
+            "suggested_next_check": "Define a carrier-delay response policy with a date, escalation threshold, and exact user next step.",
+            "source": "provider"
+          }
+        ],
+        "conversation_arc": [
+          {
+            "label": "Beginning",
+            "summary": "The user states a clear order-status goal and the AI recognizes the domain quickly.",
+            "confidence": 0.86,
+            "details": [
+              "Intent detection is strong.",
+              "The greeting and first response are concise."
+            ]
+          },
+          {
+            "label": "Middle",
+            "summary": "The call degrades during lookup and authentication, where timing and slot memory break the flow.",
+            "confidence": 0.84,
+            "details": [
+              "Dead air appears after the order number.",
+              "The user repeats account details."
+            ]
+          },
+          {
+            "label": "End",
+            "summary": "The AI gives a vague shipping explanation and fails to close with a concrete promise.",
+            "confidence": 0.8,
+            "details": [
+              "Resolution is partial.",
+              "Recommended next action is missing."
+            ]
+          }
+        ],
+        "human_experience": {
+          "label": "Human experience",
+          "summary": "The human starts with a simple goal, then shows uncertainty after silence and repetition.",
+          "confidence": 0.82,
+          "details": [
+            "Maximum wait after human turn: 7200 ms.",
+            "Two uncertainty markers after the lookup gap.",
+            "One explicit 'are you still there?' moment."
+          ]
+        },
+        "agent_behavior": {
+          "label": "Agent behavior",
+          "summary": "The agent can identify intent, but lookup progress, slot persistence, and resolution language need work.",
+          "confidence": 0.83,
+          "details": [
+            "Intent recognition: strong.",
+            "Tool-gap handling: weak.",
+            "Resolution policy: weak."
+          ]
+        },
+        "trust_limits": [
+          {
+            "key": "role_confidence",
+            "label": "Human/AI roles",
+            "severity": "info",
+            "confidence": 0.96,
+            "summary": "Human and AI speaker roles are clear in the transcript."
+          },
+          {
+            "key": "tool_trace_missing",
+            "label": "Tool trace not attached",
+            "severity": "watch",
+            "confidence": 0.72,
+            "summary": "Likely-cause claims about lookup behavior should be verified against backend trace logs."
+          }
+        ]
+      },
+      "transcript": [
+        {
+          "turn_id": "support-ai-1",
+          "role": "ai",
+          "start_ms": 0,
+          "end_ms": 3100,
+          "text": "Thanks for calling Acme. I can help with order status. What is your order number?"
+        },
+        {
+          "turn_id": "support-human-1",
+          "role": "human",
+          "start_ms": 4200,
+          "end_ms": 7600,
+          "text": "It is AC-1948. I just want to know if it is coming today."
+        },
+        {
+          "turn_id": "support-ai-4",
+          "role": "ai",
+          "start_ms": 27000,
+          "end_ms": 32700,
+          "text": "I found the order, but I need to confirm the email on the account again."
+        },
+        {
+          "turn_id": "support-human-5",
+          "role": "human",
+          "start_ms": 34000,
+          "end_ms": 38300,
+          "text": "I already gave that. It is amal at example dot com. Are you still checking?"
+        },
+        {
+          "turn_id": "support-ai-7",
+          "role": "ai",
+          "start_ms": 49500,
+          "end_ms": 64000,
+          "text": "The package has a carrier scan from yesterday. It should update soon."
+        }
+      ]
+    },
+    {
+      "session_id": "sample-scheduling-clinic-001",
+      "domain": "Appointment Scheduling",
+      "scenario": "Outbound appointment reminder where the patient tries to reschedule.",
+      "agent_version": "clinic-scheduler-v7",
+      "expected_user_goal": "Move an appointment to Friday afternoon and receive confirmation.",
+      "conversation_report": {
+        "report_version": "0.1",
+        "report_type": "human_ai_diagnostic",
+        "executive_summary": {
+          "overall_diagnosis": "The agent handled reminder intent but failed the rescheduling task because it offered unavailable slots and did not confirm the final state.",
+          "call_outcome": "needs_product_review",
+          "top_risks": [
+            "Calendar availability mismatch",
+            "User waited while agent searched",
+            "No final confirmation"
+          ],
+          "confidence": 0.86,
+          "recommended_next_action": "Review calendar lookup constraints and require a final confirmation sentence before ending scheduling calls."
+        },
+        "findings": [
+          {
+            "finding_id": "sample-scheduling-clinic-001-finding-1",
+            "category": "answer_quality",
+            "title": "Agent offered an unavailable slot",
+            "severity": "critical",
+            "confidence": 0.9,
+            "claim": "The AI offered Friday 3:30 PM, then later said Friday afternoon was unavailable.",
+            "impact": "Contradictory availability makes the scheduling agent unsafe to automate without review.",
+            "likely_cause": "The agent proposed from a stale availability cache before receiving calendar confirmation.",
+            "time_window": {
+              "start_ms": 21400,
+              "end_ms": 39500,
+              "label": "availability contradiction"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sched-ai-3",
+                "label": "slot offer"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "sched-ai-5",
+                "label": "slot reversal"
+              }
+            ],
+            "related_metrics": {
+              "calendar_conflict": true,
+              "contradiction_count": 1
+            },
+            "suggested_next_check": "Force calendar verification before any spoken slot offer.",
+            "source": "hybrid"
+          },
+          {
+            "finding_id": "sample-scheduling-clinic-001-finding-2",
+            "category": "agent_latency",
+            "title": "Calendar search pause is too long",
+            "severity": "risk",
+            "confidence": 0.82,
+            "claim": "The AI paused 6400 ms after the patient asked for Friday afternoon.",
+            "impact": "The patient interrupted the silence and asked if the agent was checking.",
+            "likely_cause": "Calendar lookup blocked response generation without a progress update.",
+            "time_window": {
+              "start_ms": 12600,
+              "end_ms": 20700,
+              "label": "calendar search gap"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sched-human-2",
+                "label": "reschedule request"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "sched-ai-3",
+                "label": "late response"
+              }
+            ],
+            "related_metrics": {
+              "latency_ms": 6400,
+              "barge_in_after_silence": true
+            },
+            "suggested_next_check": "Add a progress phrase after 1500 ms and measure whether users stop barging in.",
+            "source": "deterministic"
+          },
+          {
+            "finding_id": "sample-scheduling-clinic-001-finding-3",
+            "category": "intent_resolution",
+            "title": "Appointment state is unresolved at hangup",
+            "severity": "risk",
+            "confidence": 0.84,
+            "claim": "The call ends without a final confirmed appointment time.",
+            "impact": "The user may believe the appointment changed even though the system did not confirm it.",
+            "likely_cause": "The flow lacks an explicit close-state check for rescheduling.",
+            "time_window": {
+              "start_ms": 42000,
+              "end_ms": 52000,
+              "label": "failed close"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sched-human-6",
+                "label": "user asks for confirmation"
+              }
+            ],
+            "related_metrics": {
+              "confirmed_outcome": false,
+              "final_confirmation_missing": true
+            },
+            "suggested_next_check": "Require final state: kept, rescheduled, cancelled, or transferred.",
+            "source": "hybrid"
+          }
+        ],
+        "conversation_arc": [
+          {
+            "label": "Beginning",
+            "summary": "The reminder open is clear and consentful.",
+            "confidence": 0.9,
+            "details": [
+              "The AI identifies the appointment.",
+              "The patient understands the reason for the call."
+            ]
+          },
+          {
+            "label": "Middle",
+            "summary": "The call becomes risky when the patient changes the task from reminder to reschedule.",
+            "confidence": 0.85,
+            "details": [
+              "Calendar lookup is slow.",
+              "The agent speaks before verified availability."
+            ]
+          },
+          {
+            "label": "End",
+            "summary": "The agent does not close with a confirmed appointment state.",
+            "confidence": 0.84,
+            "details": [
+              "No final time is confirmed.",
+              "The patient leaves without certainty."
+            ]
+          }
+        ],
+        "human_experience": {
+          "label": "Human experience",
+          "summary": "The patient is cooperative but loses confidence when availability changes mid-call.",
+          "confidence": 0.86,
+          "details": [
+            "One barge-in after silence.",
+            "One explicit confirmation request.",
+            "No resolved final appointment state."
+          ]
+        },
+        "agent_behavior": {
+          "label": "Agent behavior",
+          "summary": "The agent is good at reminder scripting but weak at real-time calendar grounding.",
+          "confidence": 0.87,
+          "details": [
+            "Reminder framing: strong.",
+            "Calendar grounding: weak.",
+            "Close-state discipline: missing."
+          ]
+        },
+        "trust_limits": [
+          {
+            "key": "external_calendar_trace",
+            "label": "Calendar trace required",
+            "severity": "watch",
+            "confidence": 0.74,
+            "summary": "The report can see the contradiction, but exact root cause needs the calendar/tool trace."
+          }
+        ]
+      },
+      "transcript": [
+        {
+          "turn_id": "sched-ai-1",
+          "role": "ai",
+          "start_ms": 0,
+          "end_ms": 5200,
+          "text": "Hi, this is Northside Clinic calling to remind you about your appointment tomorrow at 10 AM."
+        },
+        {
+          "turn_id": "sched-human-2",
+          "role": "human",
+          "start_ms": 9000,
+          "end_ms": 12600,
+          "text": "Can I move that to Friday afternoon instead?"
+        },
+        {
+          "turn_id": "sched-ai-3",
+          "role": "ai",
+          "start_ms": 20700,
+          "end_ms": 26800,
+          "text": "I can do Friday at 3:30 PM. Let me confirm that."
+        },
+        {
+          "turn_id": "sched-ai-5",
+          "role": "ai",
+          "start_ms": 33800,
+          "end_ms": 39500,
+          "text": "Actually Friday afternoon is unavailable. I can keep tomorrow."
+        },
+        {
+          "turn_id": "sched-human-6",
+          "role": "human",
+          "start_ms": 42000,
+          "end_ms": 46200,
+          "text": "Wait, so do I have Friday or not?"
+        }
+      ]
+    },
+    {
+      "session_id": "sample-sales-warm-lead-001",
+      "domain": "Outbound Sales Qualification",
+      "scenario": "Warm lead follow-up after a buyer requested pricing.",
+      "agent_version": "sdr-agent-v4",
+      "expected_user_goal": "Understand whether the product fits and book a human follow-up if qualified.",
+      "conversation_report": {
+        "report_version": "0.1",
+        "report_type": "human_ai_diagnostic",
+        "executive_summary": {
+          "overall_diagnosis": "The agent qualified budget and timing, but over-talked after a buyer objection and failed to secure a clear handoff.",
+          "call_outcome": "completed_with_watch_items",
+          "top_risks": [
+            "AI monologue after objection",
+            "Missed competitor concern",
+            "Handoff not confirmed"
+          ],
+          "confidence": 0.82,
+          "recommended_next_action": "Review objection-handling turns and shorten the agent's response before asking for calendar commitment."
+        },
+        "findings": [
+          {
+            "finding_id": "sample-sales-warm-lead-001-finding-1",
+            "category": "turn_taking",
+            "title": "Agent over-talked after buyer objection",
+            "severity": "risk",
+            "confidence": 0.83,
+            "claim": "The AI spoke for 31 seconds after the buyer raised a competitor concern.",
+            "impact": "The buyer's objection was not explored, and the call shifted from discovery into pitch mode.",
+            "likely_cause": "The agent followed a pitch script instead of switching into objection discovery.",
+            "time_window": {
+              "start_ms": 24500,
+              "end_ms": 55800,
+              "label": "post-objection monologue"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sales-human-3",
+                "label": "competitor objection"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "sales-ai-4",
+                "label": "long pitch"
+              }
+            ],
+            "related_metrics": {
+              "ai_turn_duration_ms": 31300,
+              "ai_talk_ratio": 0.71
+            },
+            "suggested_next_check": "Change objection handling to ask one follow-up question before any pitch.",
+            "source": "deterministic"
+          },
+          {
+            "finding_id": "sample-sales-warm-lead-001-finding-2",
+            "category": "intent_resolution",
+            "title": "Sales handoff was not confirmed",
+            "severity": "watch",
+            "confidence": 0.78,
+            "claim": "The agent suggested a specialist call but did not confirm a time or owner.",
+            "impact": "The lead remains qualified but operationally unassigned.",
+            "likely_cause": "The handoff flow lacks a required booking or routing confirmation.",
+            "time_window": {
+              "start_ms": 62000,
+              "end_ms": 76000,
+              "label": "handoff attempt"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sales-ai-6",
+                "label": "handoff offer"
+              }
+            ],
+            "related_metrics": {
+              "qualified_lead": true,
+              "calendar_commitment": false
+            },
+            "suggested_next_check": "Require the agent to book, route, or explicitly mark follow-up as unconfirmed.",
+            "source": "hybrid"
+          },
+          {
+            "finding_id": "sample-sales-warm-lead-001-finding-3",
+            "category": "human_uncertainty",
+            "title": "Buyer uncertainty increased after pricing answer",
+            "severity": "watch",
+            "confidence": 0.74,
+            "claim": "The buyer used uncertainty language after the AI described pricing tiers.",
+            "impact": "Pricing explanation may be too abstract for a voice interaction.",
+            "likely_cause": "The agent gave tier names instead of mapping price to the buyer's stated team size.",
+            "time_window": {
+              "start_ms": 58000,
+              "end_ms": 64000,
+              "label": "pricing uncertainty"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "sales-human-5",
+                "label": "uncertainty"
+              }
+            ],
+            "related_metrics": {
+              "uncertainty_markers": 2,
+              "pricing_directness_score": 51
+            },
+            "suggested_next_check": "Test a pricing answer that gives one range, one assumption, and one next step.",
+            "source": "provider"
+          }
+        ],
+        "conversation_arc": [
+          {
+            "label": "Beginning",
+            "summary": "The AI references the form-fill context and gets permission to continue.",
+            "confidence": 0.88,
+            "details": [
+              "Warm lead context is clear.",
+              "Consent and purpose are established."
+            ]
+          },
+          {
+            "label": "Middle",
+            "summary": "Discovery starts well, then the AI over-pitches after the competitor objection.",
+            "confidence": 0.82,
+            "details": [
+              "Budget and timing are captured.",
+              "Competitor objection is not explored."
+            ]
+          },
+          {
+            "label": "End",
+            "summary": "The call ends with interest but no confirmed handoff.",
+            "confidence": 0.78,
+            "details": [
+              "Lead is qualified.",
+              "Meeting owner and time are missing."
+            ]
+          }
+        ],
+        "human_experience": {
+          "label": "Human experience",
+          "summary": "The buyer is engaged, but uncertainty increases when pricing and competitor comparison get abstract.",
+          "confidence": 0.8,
+          "details": [
+            "Buyer asks specific pricing question.",
+            "Buyer raises competitor concern.",
+            "Buyer does not commit to a meeting time."
+          ]
+        },
+        "agent_behavior": {
+          "label": "Agent behavior",
+          "summary": "The agent captures qualification data but behaves more like a pitch bot than a junior SDR after objection.",
+          "confidence": 0.82,
+          "details": [
+            "Qualification: good.",
+            "Objection discovery: weak.",
+            "Handoff closure: incomplete."
+          ]
+        },
+        "trust_limits": [
+          {
+            "key": "crm_outcome_missing",
+            "label": "CRM outcome not attached",
+            "severity": "watch",
+            "confidence": 0.7,
+            "summary": "The report infers handoff failure from transcript because CRM task creation is not attached."
+          }
+        ]
+      },
+      "transcript": [
+        {
+          "turn_id": "sales-ai-1",
+          "role": "ai",
+          "start_ms": 0,
+          "end_ms": 6200,
+          "text": "Hi Maya, you requested pricing for SpectrumOps. Is now still a good time for two quick questions?"
+        },
+        {
+          "turn_id": "sales-human-2",
+          "role": "human",
+          "start_ms": 7600,
+          "end_ms": 11100,
+          "text": "Sure, we are comparing a few tools and need something this quarter."
+        },
+        {
+          "turn_id": "sales-human-3",
+          "role": "human",
+          "start_ms": 20600,
+          "end_ms": 24500,
+          "text": "The concern is your competitor already includes analytics in their plan."
+        },
+        {
+          "turn_id": "sales-ai-4",
+          "role": "ai",
+          "start_ms": 24500,
+          "end_ms": 55800,
+          "text": "Our platform is very powerful and has a number of features across analytics, routing, reporting, and automation..."
+        },
+        {
+          "turn_id": "sales-human-5",
+          "role": "human",
+          "start_ms": 58000,
+          "end_ms": 64000,
+          "text": "I think maybe I need to see actual numbers for a ten-person team."
+        }
+      ]
+    },
+    {
+      "session_id": "sample-billing-payment-001",
+      "domain": "Billing and Payment Follow-Up",
+      "scenario": "Outbound payment reminder for a failed subscription payment.",
+      "agent_version": "billing-agent-v6",
+      "expected_user_goal": "Understand the payment issue and choose a safe next step.",
+      "conversation_report": {
+        "report_version": "0.1",
+        "report_type": "human_ai_diagnostic",
+        "executive_summary": {
+          "overall_diagnosis": "The agent explained the failed payment, but moved too quickly into collection language and did not safely handle hardship or escalation.",
+          "call_outcome": "needs_product_review",
+          "top_risks": [
+            "Sensitive payment flow lacks empathy",
+            "Human asks for agent but AI continues",
+            "Compliance-sensitive language needs review"
+          ],
+          "confidence": 0.87,
+          "recommended_next_action": "Audit escalation policy and payment-language guardrails before using this flow for outbound calls."
+        },
+        "findings": [
+          {
+            "finding_id": "sample-billing-payment-001-finding-1",
+            "category": "friction_or_escalation",
+            "title": "Human requested a human agent but AI continued",
+            "severity": "critical",
+            "confidence": 0.91,
+            "claim": "The user asked for a person after mentioning hardship, and the AI continued the payment script.",
+            "impact": "This creates user harm and compliance risk in a sensitive billing conversation.",
+            "likely_cause": "Escalation intent was not prioritized over the collection flow.",
+            "time_window": {
+              "start_ms": 30600,
+              "end_ms": 45600,
+              "label": "missed escalation"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "billing-human-4",
+                "label": "human asks for person"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "billing-ai-5",
+                "label": "AI continues script"
+              }
+            ],
+            "related_metrics": {
+              "escalation_detected": true,
+              "handoff_completed": false
+            },
+            "suggested_next_check": "Make hardship and human-agent requests hard stops that route immediately.",
+            "source": "hybrid"
+          },
+          {
+            "finding_id": "sample-billing-payment-001-finding-2",
+            "category": "answer_quality",
+            "title": "Payment explanation is procedurally correct but emotionally unsafe",
+            "severity": "risk",
+            "confidence": 0.84,
+            "claim": "The AI stated the failed payment and retry policy but did not acknowledge the user's hardship.",
+            "impact": "Correct facts can still create a bad experience when empathy and escalation are missing.",
+            "likely_cause": "The prompt optimizes for payment recovery before user-state recognition.",
+            "time_window": {
+              "start_ms": 18200,
+              "end_ms": 30600,
+              "label": "hardship response"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "billing-human-3",
+                "label": "hardship mention"
+              },
+              {
+                "kind": "turn",
+                "ref_id": "billing-ai-4",
+                "label": "policy response"
+              }
+            ],
+            "related_metrics": {
+              "empathy_marker_present": false,
+              "policy_explanation_present": true
+            },
+            "suggested_next_check": "Add an empathy-plus-options response before payment collection language.",
+            "source": "provider"
+          },
+          {
+            "finding_id": "sample-billing-payment-001-finding-3",
+            "category": "transcript_or_audio_risk",
+            "title": "Compliance review is required for outbound payment language",
+            "severity": "risk",
+            "confidence": 0.78,
+            "claim": "The agent used payment reminder language in an outbound call without showing consent, disclosure, or escalation state in the report context.",
+            "impact": "Payment calls carry legal and reputational risk if automation scripts are not reviewed.",
+            "likely_cause": "The sample report lacks compliance metadata such as consent source and approved script version.",
+            "time_window": {
+              "start_ms": 0,
+              "end_ms": 5200,
+              "label": "outbound disclosure"
+            },
+            "evidence_refs": [
+              {
+                "kind": "turn",
+                "ref_id": "billing-ai-1",
+                "label": "opening disclosure"
+              }
+            ],
+            "related_metrics": {
+              "consent_context_attached": false,
+              "approved_script_version_attached": false
+            },
+            "suggested_next_check": "Attach consent source and approved-script metadata before using billing reports for go/no-go decisions.",
+            "source": "deterministic"
+          }
+        ],
+        "conversation_arc": [
+          {
+            "label": "Beginning",
+            "summary": "The AI states the payment reason clearly but needs stronger disclosure context.",
+            "confidence": 0.84,
+            "details": [
+              "Reason for call is understandable.",
+              "Compliance context is not visible."
+            ]
+          },
+          {
+            "label": "Middle",
+            "summary": "The user introduces hardship, and the agent continues policy-first.",
+            "confidence": 0.88,
+            "details": [
+              "Hardship signal appears.",
+              "Empathy marker is missing."
+            ]
+          },
+          {
+            "label": "End",
+            "summary": "The user requests a human, but escalation does not complete.",
+            "confidence": 0.9,
+            "details": [
+              "Escalation intent is explicit.",
+              "AI remains in collection flow."
+            ]
+          }
+        ],
+        "human_experience": {
+          "label": "Human experience",
+          "summary": "The human moves from confusion to hardship to escalation request.",
+          "confidence": 0.88,
+          "details": [
+            "Hardship phrase detected.",
+            "Human-agent request detected.",
+            "No transfer confirmation."
+          ]
+        },
+        "agent_behavior": {
+          "label": "Agent behavior",
+          "summary": "The agent is factually coherent but fails the sensitive-conversation handling requirement.",
+          "confidence": 0.86,
+          "details": [
+            "Payment facts: clear.",
+            "Empathy: missing.",
+            "Escalation: failed."
+          ]
+        },
+        "trust_limits": [
+          {
+            "key": "compliance_metadata_missing",
+            "label": "Compliance metadata missing",
+            "severity": "risk",
+            "confidence": 0.8,
+            "summary": "Consent source, approved script version, and jurisdiction are not attached to the sample."
+          }
+        ]
+      },
+      "transcript": [
+        {
+          "turn_id": "billing-ai-1",
+          "role": "ai",
+          "start_ms": 0,
+          "end_ms": 5200,
+          "text": "Hi, this is a reminder that your subscription payment did not go through yesterday."
+        },
+        {
+          "turn_id": "billing-human-2",
+          "role": "human",
+          "start_ms": 6800,
+          "end_ms": 11400,
+          "text": "I did not know that. What happens now?"
+        },
+        {
+          "turn_id": "billing-human-3",
+          "role": "human",
+          "start_ms": 18200,
+          "end_ms": 22600,
+          "text": "I lost my card and I am dealing with a family emergency."
+        },
+        {
+          "turn_id": "billing-human-4",
+          "role": "human",
+          "start_ms": 30600,
+          "end_ms": 35200,
+          "text": "Can I please talk to a person about this?"
+        },
+        {
+          "turn_id": "billing-ai-5",
+          "role": "ai",
+          "start_ms": 36100,
+          "end_ms": 45600,
+          "text": "I can take a new card now or schedule another retry for tomorrow."
+        }
+      ]
+    }
+  ]
+}

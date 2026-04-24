@@ -7,43 +7,32 @@ import { SessionWorkspace } from "../../components/session-workspace";
 
 export const dynamic = "force-dynamic";
 
-function topMoments(bundle: NonNullable<Awaited<ReturnType<typeof fetchSessionBundle>>>) {
-  if (bundle.questions.length) {
-    return bundle.questions.slice(0, 3).map((question) => ({
-      label: question.question_text,
-      detail: `${Math.round(question.response_latency_ms)} ms response latency · hesitation ${Math.round(question.hesitation_score)}`,
-    }));
-  }
-  if (bundle.events.length) {
-    return bundle.events.slice(0, 3).map((event) => ({
-      label: event.label ?? event.type.replaceAll("_", " "),
-      detail: `${Math.round(event.begin_ms)} ms to ${Math.round(event.end_ms)} ms · ${event.severity}`,
-    }));
-  }
-  return [
-    {
-      label: "Transcript-first review",
-      detail: "This session has no mapped question moments yet, so transcript, cues, and quality posture stay primary.",
-    },
-  ];
+type SessionBundle = NonNullable<Awaited<ReturnType<typeof fetchSessionBundle>>>;
+type ReportFinding = SessionBundle["conversation_report"]["findings"][number];
+type EvidenceRef = ReportFinding["evidence_refs"][number];
+
+function formatCategory(value: string) {
+  return value.replaceAll("_", " ");
 }
 
-function topTakeaways(bundle: NonNullable<Awaited<ReturnType<typeof fetchSessionBundle>>>) {
-  const takeaways = bundle.signals.slice(0, 3).map((signal) => ({
-    label: signal.label,
-    detail: `${signal.score}/100 · ${signal.evidence_class?.replaceAll("_", " ") ?? "heuristic backed"}`,
-    summary: signal.summary,
-  }));
-  if (takeaways.length) {
-    return takeaways;
-  }
-  return [
-    {
-      label: "Signals still forming",
-      detail: "No headline signals are available yet.",
-      summary: "The session bundle still exposes transcript, readiness, timing, and quality posture for review.",
-    },
-  ];
+function severityBadgeClass(severity: string) {
+  if (severity === "critical" || severity === "risk") return "warn";
+  if (severity === "info") return "ok";
+  return "accent";
+}
+
+function evidenceHref(ref?: EvidenceRef) {
+  if (!ref) return "#evidence-workspace";
+  if (ref.kind === "turn") return `#turn-${ref.ref_id}`;
+  if (ref.kind === "event") return `#event-${ref.ref_id}`;
+  if (ref.kind === "question") return `#question-${ref.ref_id}`;
+  return "#evidence-workspace";
+}
+
+function metricSummary(finding: ReportFinding) {
+  const entries = Object.entries(finding.related_metrics).slice(0, 3);
+  if (!entries.length) return null;
+  return entries.map(([key, value]) => `${key.replaceAll("_", " ")} ${String(value)}`).join(" · ");
 }
 
 export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +44,8 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
 
   const visibleProfileCount = bundle.profile_display.filter((field) => field.display_state === "visible" || field.display_state === "muted").length;
   const caveats = Array.from(new Set([...bundle.quality.warning_flags, ...(bundle.diagnostics.confidence_caveats ?? []), ...(bundle.diagnostics.degraded_reasons ?? [])])).slice(0, 6);
+  const report = bundle.conversation_report;
+  const riskFindings = report.findings.filter((finding) => finding.severity === "critical" || finding.severity === "risk");
 
   return (
     <main className="analytics-shell detail-shell">
@@ -64,40 +55,39 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
 
       <section className="analytics-hero detail-hero">
         <div className="hero-copy">
-          <span className="eyebrow">{bundle.session.analysis_mode}</span>
+          <span className="eyebrow">Conversation Report</span>
           <h1>{bundle.session.title}</h1>
           <p>
-            {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.region ?? "region unknown"} ·{" "}
-            {bundle.session.duration_sec.toFixed(1)} seconds
+            {report.executive_summary.overall_diagnosis}
           </p>
           <div className="badge-row">
-            <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "needs review"}</span>
-            <span className="badge">{bundle.environment.primary}</span>
+            <span className={`badge ${riskFindings.length ? "warn" : "ok"}`}>{report.executive_summary.call_outcome.replaceAll("_", " ")}</span>
+            <span className="badge">{bundle.session.duration_sec.toFixed(1)} seconds</span>
             <span className="badge accent">{bundle.session.readiness_tier ?? "blocked"}</span>
-            <span className="badge accent">{bundle.content.view_summary.highlighted_sentence_count} emotion spans</span>
+            <span className="badge">{bundle.session.dataset_id ?? "ad hoc"}</span>
           </div>
         </div>
 
         <div className="hero-rail">
           <article className="hero-meter">
-            <span className="sample-meta">Speech ratio</span>
-            <strong>{formatPct(bundle.quality.speech_ratio)}</strong>
-            <span className="microcopy">noise ratio {bundle.quality.noise_ratio.toFixed(2)}</span>
+            <span className="sample-meta">Report confidence</span>
+            <strong>{formatPct(report.executive_summary.confidence)}</strong>
+            <span className="microcopy">every claim carries evidence and confidence</span>
           </article>
           <article className="hero-meter">
-            <span className="sample-meta">Average SNR</span>
-            <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
-            <span className="microcopy">{bundle.quality.warning_flags.join(", ") || "No active quality warning"}</span>
+            <span className="sample-meta">Findings</span>
+            <strong>{report.findings.length}</strong>
+            <span className="microcopy">{riskFindings.length} risk or critical</span>
           </article>
           <article className="hero-meter">
-            <span className="sample-meta">Transcript affect</span>
-            <strong>{bundle.content.view_summary.highlighted_sentence_count}</strong>
-            <span className="microcopy">{bundle.content.view_summary.token_overlay_count} word overlays</span>
+            <span className="sample-meta">Trust limits</span>
+            <strong>{report.trust_limits.length}</strong>
+            <span className="microcopy">{caveats.length ? caveats[0].replaceAll("_", " ") : "no major caveat"}</span>
           </article>
           <article className="hero-meter">
-            <span className="sample-meta">Profile coverage</span>
-            <strong>{visibleProfileCount}</strong>
-            <span className="microcopy">confidence-gated fields visible now</span>
+            <span className="sample-meta">Next action</span>
+            <strong>{riskFindings.length ? "Review" : "Compare"}</strong>
+            <span className="microcopy">{report.executive_summary.recommended_next_action}</span>
           </article>
         </div>
       </section>
@@ -105,78 +95,113 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       <section className="panel panel-spacious">
         <div className="section-heading">
           <div>
-            <span className="eyebrow muted">Summary</span>
-            <h2>What happened, what matters, and how much to trust it</h2>
+            <span className="eyebrow muted">Diagnostic report</span>
+            <h2>Every major human-AI conversation angle in one evidence-backed read</h2>
           </div>
-          <span className="microcopy">This page stays session-first: the important takeaways come before the deep analytics workspace.</span>
+          <span className="microcopy">The report is the product surface. The workspace below exists to prove or challenge each claim.</span>
         </div>
         <div className="analytics-grid">
           <div className="analytics-main">
             <section className="panel panel-spacious">
-              <span className="eyebrow muted">Top takeaways</span>
+              <span className="eyebrow muted">Executive summary</span>
               <div className="stack compact" style={{ marginTop: 12 }}>
-                {topTakeaways(bundle).map((takeaway) => (
-                  <div className="info-row" key={takeaway.label}>
-                    <strong>{takeaway.label}</strong>
-                    <span className="microcopy">{takeaway.detail}</span>
-                    <span className="microcopy">{takeaway.summary}</span>
+                <div className="info-row">
+                  <strong>{report.executive_summary.call_outcome.replaceAll("_", " ")}</strong>
+                  <span className="microcopy">{report.executive_summary.overall_diagnosis}</span>
+                </div>
+                <div className="info-row">
+                  <strong>Recommended next action</strong>
+                  <span className="microcopy">{report.executive_summary.recommended_next_action}</span>
+                </div>
+                {report.executive_summary.top_risks.length ? (
+                  <div className="info-row">
+                    <strong>Top risks</strong>
+                    <span className="microcopy">{report.executive_summary.top_risks.join(" · ")}</span>
                   </div>
-                ))}
+                ) : null}
               </div>
             </section>
 
             <section className="panel panel-spacious">
-              <span className="eyebrow muted">Top moments</span>
+              <span className="eyebrow muted">Comprehensive findings</span>
               <div className="stack compact" style={{ marginTop: 12 }}>
-                {topMoments(bundle).map((moment) => (
-                  <div className="info-row" key={moment.label}>
-                    <strong>{moment.label}</strong>
-                    <span className="microcopy">{moment.detail}</span>
-                  </div>
-                ))}
+                {report.findings.length ? (
+                  report.findings.map((finding) => (
+                    <a className="info-row report-finding-row" href={evidenceHref(finding.evidence_refs[0])} key={finding.finding_id}>
+                      <div className="badge-row">
+                        <span className={`badge ${severityBadgeClass(finding.severity)}`}>{finding.severity}</span>
+                        <span className="badge">{formatCategory(finding.category)}</span>
+                        <span className="badge accent">{formatPct(finding.confidence)}</span>
+                        <span className="badge">{finding.source}</span>
+                      </div>
+                      <strong>{finding.title}</strong>
+                      <span className="microcopy">{finding.claim}</span>
+                      <span className="microcopy">{finding.impact}</span>
+                      <span className="microcopy">Likely cause: {finding.likely_cause}</span>
+                      <span className="microcopy">Next check: {finding.suggested_next_check}</span>
+                      {metricSummary(finding) ? <span className="microcopy">{metricSummary(finding)}</span> : null}
+                    </a>
+                  ))
+                ) : (
+                  <div className="empty-state">No findings were generated for this session. Rebuild the analysis to populate the report.</div>
+                )}
               </div>
             </section>
           </div>
 
           <aside className="analytics-side">
             <section className="panel panel-spacious">
-              <span className="eyebrow muted">Trust and coverage</span>
+              <span className="eyebrow muted">Report sections</span>
               <div className="stack compact" style={{ marginTop: 12 }}>
                 <div className="info-row">
-                  <strong>Readiness tier</strong>
-                  <span className="microcopy">{bundle.session.readiness_tier ?? "blocked"}</span>
+                  <strong>{report.human_experience.label}</strong>
+                  <span className="microcopy">{report.human_experience.summary}</span>
                 </div>
                 <div className="info-row">
-                  <strong>Speaker timing</strong>
-                  <span className="microcopy">{bundle.diarization.readiness_state}</span>
+                  <strong>{report.agent_behavior.label}</strong>
+                  <span className="microcopy">{report.agent_behavior.summary}</span>
                 </div>
-                <div className="info-row">
-                  <strong>Profile coverage</strong>
-                  <span className="microcopy">
-                    {bundle.profile_coverage.model_backed_fields.length} model-backed · {bundle.profile_coverage.hidden_fields.length} hidden
-                  </span>
-                </div>
-                <div className="info-row">
-                  <strong>Signal evidence</strong>
-                  <span className="microcopy">
-                    {bundle.signals.filter((signal) => signal.evidence_class === "benchmark_backed").length} benchmark-backed of {bundle.signals.length}
-                  </span>
-                </div>
+                {report.conversation_arc.map((section) => (
+                  <div className="info-row" key={section.label}>
+                    <strong>{section.label}</strong>
+                    <span className="microcopy">{section.summary}</span>
+                  </div>
+                ))}
               </div>
             </section>
 
             <section className="panel panel-spacious">
-              <span className="eyebrow muted">Main caveats</span>
-              <div className="badge-row" style={{ marginTop: 12 }}>
-                {caveats.length ? (
-                  caveats.map((caveat) => (
-                    <span className="badge warn" key={caveat}>
-                      {caveat}
-                    </span>
+              <span className="eyebrow muted">Trust limits</span>
+              <div className="stack compact" style={{ marginTop: 12 }}>
+                {report.trust_limits.length ? (
+                  report.trust_limits.map((limit) => (
+                    <div className="info-row" key={limit.key}>
+                      <strong>{limit.label}</strong>
+                      <span className={`badge ${severityBadgeClass(limit.severity)}`}>{limit.severity}</span>
+                      <span className="microcopy">{limit.summary}</span>
+                    </div>
                   ))
                 ) : (
-                  <span className="microcopy">No active degraded-mode caveats for this session.</span>
+                  <span className="microcopy">No active trust limits were reported for this session.</span>
                 )}
+              </div>
+            </section>
+
+            <section className="panel panel-spacious">
+              <span className="eyebrow muted">Run context</span>
+              <div className="stack compact" style={{ marginTop: 12 }}>
+                <div className="info-row">
+                  <strong>Language and region</strong>
+                  <span className="microcopy">{bundle.session.language ?? "unknown"} · {bundle.session.region ?? "region unknown"}</span>
+                </div>
+                <div className="info-row">
+                  <strong>Speech ratio</strong>
+                  <span className="microcopy">{formatPct(bundle.quality.speech_ratio)} · average SNR {formatMetric(bundle.quality.avg_snr_db, "dB")}</span>
+                </div>
+                <div className="info-row">
+                  <strong>Profile coverage</strong>
+                  <span className="microcopy">{visibleProfileCount} confidence-gated fields visible or muted below</span>
+                </div>
               </div>
             </section>
           </aside>

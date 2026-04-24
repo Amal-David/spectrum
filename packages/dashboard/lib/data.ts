@@ -8,11 +8,83 @@ type DisplayState = "visible" | "muted" | "hidden" | "unavailable";
 type PredictionSource = "model" | "heuristic" | "metadata_hint" | "manual_override" | "benchmark_label" | "unavailable";
 type SpeakerRole = "human" | "ai" | "unknown";
 type EvidenceClass = "benchmark_backed" | "model_backed" | "heuristic_backed" | "metadata_backed";
+type ReportSeverity = "info" | "watch" | "risk" | "critical";
+type ReportFindingSource = "deterministic" | "provider" | "hybrid";
+type ConversationReportCategory =
+  | "intent_resolution"
+  | "answer_quality"
+  | "agent_latency"
+  | "human_wait"
+  | "turn_taking"
+  | "interruption_overlap"
+  | "clarification_loop"
+  | "human_uncertainty"
+  | "friction_or_escalation"
+  | "agent_recovery"
+  | "role_confidence"
+  | "transcript_or_audio_risk";
 
 export type EvidenceRef = {
   kind: string;
   ref_id: string;
   label?: string | null;
+};
+
+export type ConversationReport = {
+  report_version: string;
+  report_type: string;
+  executive_summary: {
+    overall_diagnosis: string;
+    call_outcome: string;
+    top_risks: string[];
+    confidence: number;
+    recommended_next_action: string;
+  };
+  findings: Array<{
+    finding_id: string;
+    category: ConversationReportCategory;
+    title: string;
+    severity: ReportSeverity;
+    confidence: number;
+    claim: string;
+    impact: string;
+    likely_cause: string;
+    time_window?: { start_ms: number; end_ms: number; label?: string | null } | null;
+    evidence_refs: EvidenceRef[];
+    related_metrics: Record<string, string | number | boolean | null>;
+    suggested_next_check: string;
+    source: ReportFindingSource;
+  }>;
+  conversation_arc: Array<{
+    label: string;
+    summary: string;
+    confidence: number;
+    evidence_refs: EvidenceRef[];
+    details: string[];
+  }>;
+  human_experience: {
+    label: string;
+    summary: string;
+    confidence: number;
+    evidence_refs: EvidenceRef[];
+    details: string[];
+  };
+  agent_behavior: {
+    label: string;
+    summary: string;
+    confidence: number;
+    evidence_refs: EvidenceRef[];
+    details: string[];
+  };
+  trust_limits: Array<{
+    key: string;
+    label: string;
+    severity: ReportSeverity;
+    confidence: number;
+    summary: string;
+    evidence_refs: EvidenceRef[];
+  }>;
+  context: Record<string, string | number | boolean | null>;
 };
 
 export type SessionBundle = {
@@ -269,6 +341,7 @@ export type SessionBundle = {
     evidence_refs: EvidenceRef[];
     explainability_mask: string[];
   }>;
+  conversation_report: ConversationReport;
   metrics: Record<string, { name: string; value: string | number | boolean | null; unit?: string | null; confidence: number }>;
   diagnostics: {
     enabled_comparisons: string[];
@@ -362,6 +435,26 @@ function inferReadinessTier(transcript: string, diarizationState?: StageState | 
     return "transcript_only";
   }
   return "blocked";
+}
+
+function emptyConversationReport(): ConversationReport {
+  return {
+    report_version: "0.1",
+    report_type: "human_ai_diagnostic",
+    executive_summary: {
+      overall_diagnosis: "Conversation report has not been generated yet.",
+      call_outcome: "unknown",
+      top_risks: [],
+      confidence: 0,
+      recommended_next_action: "Run or rebuild the session analysis to generate a report.",
+    },
+    findings: [],
+    conversation_arc: [],
+    human_experience: { label: "Human experience", summary: "", confidence: 0, evidence_refs: [], details: [] },
+    agent_behavior: { label: "Agent behavior", summary: "", confidence: 0, evidence_refs: [], details: [] },
+    trust_limits: [],
+    context: {},
+  };
 }
 
 export function normalizeSessionBundle(rawBundle: any): SessionBundle {
@@ -489,6 +582,7 @@ export function normalizeSessionBundle(rawBundle: any): SessionBundle {
       ...signal,
       evidence_class: signal?.evidence_class ?? "heuristic_backed",
     })),
+    conversation_report: rawBundle?.conversation_report ?? emptyConversationReport(),
     metrics: rawBundle?.metrics ?? {},
     diagnostics: {
       enabled_comparisons: rawBundle?.diagnostics?.enabled_comparisons ?? [],

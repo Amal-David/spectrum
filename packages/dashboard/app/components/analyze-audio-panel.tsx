@@ -115,6 +115,14 @@ export function AnalyzeAudioPanel() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<SessionJobStatus | null>(null);
+  const [callScenario, setCallScenario] = useState("");
+  const [agentVersion, setAgentVersion] = useState("");
+  const [promptVersion, setPromptVersion] = useState("");
+  const [expectedUserGoal, setExpectedUserGoal] = useState("");
+  const [expectedSuccessfulOutcome, setExpectedSuccessfulOutcome] = useState("");
+  const [knownFailureNote, setKnownFailureNote] = useState("");
+  const [humanSpeakerHint, setHumanSpeakerHint] = useState("");
+  const [aiSpeakerHint, setAiSpeakerHint] = useState("");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ACTIVE_JOB_KEY);
@@ -197,6 +205,24 @@ export function AnalyzeAudioPanel() {
 
   const isLocked = isSubmitting || Boolean(activeJobId);
 
+  const reportMetadata = useMemo(() => {
+    const metadata: Record<string, string> = {};
+    for (const [key, value] of Object.entries({
+      call_scenario: callScenario,
+      agent_version: agentVersion,
+      prompt_version: promptVersion,
+      expected_user_goal: expectedUserGoal,
+      expected_successful_outcome: expectedSuccessfulOutcome,
+      known_failure_note: knownFailureNote,
+      human_speaker_hint: humanSpeakerHint,
+      ai_speaker_hint: aiSpeakerHint,
+    })) {
+      const trimmed = value.trim();
+      if (trimmed) metadata[key] = trimmed;
+    }
+    return metadata;
+  }, [agentVersion, aiSpeakerHint, callScenario, expectedSuccessfulOutcome, expectedUserGoal, humanSpeakerHint, knownFailureNote, promptVersion]);
+
   async function selectFile(file: File) {
     setSelectionError(null);
     setRuntimeError(null);
@@ -235,7 +261,8 @@ export function AnalyzeAudioPanel() {
           analysis_mode: "full",
           metadata: {
             source_type: "direct_audio_file",
-            title: fileTitle(selectedFile.name)
+            title: fileTitle(selectedFile.name),
+            ...reportMetadata
           }
         })
       });
@@ -294,7 +321,8 @@ export function AnalyzeAudioPanel() {
           metadata: {
             source_type: "direct_audio_file",
             title: fileTitle(selectedFile.name),
-            duration_hint_sec: durationSec
+            duration_hint_sec: durationSec,
+            ...reportMetadata
           }
         })
       });
@@ -318,8 +346,8 @@ export function AnalyzeAudioPanel() {
     <section className="analysis-panel">
       <div className="section-heading">
         <div>
-          <span className="eyebrow muted">Analyze Audio</span>
-          <h2>Drag in any call clip, run analysis, and jump straight to the full evidence dashboard.</h2>
+          <span className="eyebrow muted">Generate Report</span>
+          <h2>Drag in a human-AI call, run analysis, and jump straight to the diagnostic report.</h2>
         </div>
         <span className="microcopy">Accepted formats: WAV, MP3, M4A · Max upload size: 512 MB · One active run per browser tab</span>
       </div>
@@ -418,6 +446,45 @@ export function AnalyzeAudioPanel() {
             <p className="microcopy">
               OpenAI-backed diarized transcription and human-vs-AI role analysis run automatically when a local <code>OPENAI_API_KEY</code> is configured. Otherwise the upload falls back to the local heuristic pipeline.
             </p>
+          </article>
+
+          <article className="analysis-card">
+            <span className="sample-meta">Report context</span>
+            <p className="microcopy">Optional, but useful: these hints help the diagnostic report judge whether the AI actually resolved the human's goal.</p>
+            <div className="context-field-grid">
+              <label>
+                <span className="row-label">Call scenario</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setCallScenario(event.target.value)} placeholder="billing support, appointment booking..." value={callScenario} />
+              </label>
+              <label>
+                <span className="row-label">Agent version</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setAgentVersion(event.target.value)} placeholder="voice-agent-v12" value={agentVersion} />
+              </label>
+              <label>
+                <span className="row-label">Prompt/version label</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setPromptVersion(event.target.value)} placeholder="prompt-2026-04-24" value={promptVersion} />
+              </label>
+              <label>
+                <span className="row-label">Expected user goal</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setExpectedUserGoal(event.target.value)} placeholder="get refund status" value={expectedUserGoal} />
+              </label>
+              <label>
+                <span className="row-label">Successful outcome</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setExpectedSuccessfulOutcome(event.target.value)} placeholder="user gets a clear next step" value={expectedSuccessfulOutcome} />
+              </label>
+              <label>
+                <span className="row-label">Known failure note</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setKnownFailureNote(event.target.value)} placeholder="agent may loop on confirmation" value={knownFailureNote} />
+              </label>
+              <label>
+                <span className="row-label">Human speaker hint</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setHumanSpeakerHint(event.target.value)} placeholder="speaker_0" value={humanSpeakerHint} />
+              </label>
+              <label>
+                <span className="row-label">AI speaker hint</span>
+                <input className="filter-input" disabled={isLocked} onChange={(event) => setAiSpeakerHint(event.target.value)} placeholder="speaker_1" value={aiSpeakerHint} />
+              </label>
+            </div>
           </article>
 
           <article className="analysis-card">

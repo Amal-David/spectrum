@@ -74,10 +74,10 @@ export default async function HomePage({ searchParams }: PageProps) {
       <section className="analytics-hero">
         <div className="hero-copy">
           <span className="eyebrow">Spectrum</span>
-          <h1>Turn one audio file into a portable session bundle you can inspect, compare, and trust.</h1>
+          <h1>Turn one human-AI voice call into a comprehensive conversation report.</h1>
           <p>
-            The core loop is simple: bootstrap the stack, analyze one recording, open the session workspace, and review transcript,
-            speakers, cues, signals, and caveats from the same backend-backed bundle.
+            Spectrum starts with the report: what happened, where the agent experience broke, what evidence supports each claim, and
+            what to inspect next. Bundles, cohorts, and benchmarks are the infrastructure underneath.
           </p>
           <div className="hero-actions">
             <Link href={recentRuns[0] ? `/sessions/${recentRuns[0].session_id}` : "#quickstart"} className="primary-link">
@@ -93,22 +93,22 @@ export default async function HomePage({ searchParams }: PageProps) {
           <article className="hero-meter">
             <span className="sample-meta">Runs in workspace</span>
             <strong>{runCount ? formatMetric(runCount.value) : "0"}</strong>
-            <span className="microcopy">Every run becomes one durable session bundle.</span>
+            <span className="microcopy">Every run becomes one diagnostic report plus one durable bundle.</span>
           </article>
           <article className="hero-meter">
             <span className="sample-meta">Usable-run rate</span>
             <strong>{usableRunRate ? formatMetric(usableRunRate.value, usableRunRate.unit) : "0%"}</strong>
-            <span className="microcopy">Degraded sessions stay inspectable instead of looking broken.</span>
+            <span className="microcopy">Degraded calls still get trust limits instead of vague dashboards.</span>
           </article>
           <article className="hero-meter">
             <span className="sample-meta">Average SNR</span>
             <strong>{averageSnr ? formatMetric(averageSnr.value, averageSnr.unit) : "Unknown"}</strong>
-            <span className="microcopy">Quality posture across the current bundle cohort.</span>
+            <span className="microcopy">Quality posture affects which report claims are safe to trust.</span>
           </article>
           <article className="hero-meter">
             <span className="sample-meta">Top readiness tier</span>
             <strong>{topReadiness?.label ?? "No runs yet"}</strong>
-            <span className="microcopy">The backend owns readiness semantics for every session.</span>
+            <span className="microcopy">Readiness tells the report what can and cannot be concluded.</span>
           </article>
         </div>
       </section>
@@ -117,7 +117,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         <div className="section-heading">
           <div>
             <span className="eyebrow muted">First 10 minutes</span>
-            <h2>One blessed developer workflow</h2>
+            <h2>One blessed report workflow</h2>
           </div>
           <span className="microcopy">If Spectrum feels useful here, the rest of the platform becomes easier to trust.</span>
         </div>
@@ -137,27 +137,27 @@ export default async function HomePage({ searchParams }: PageProps) {
               }}
             >{`make bootstrap\nmake demo\nmake dev\nspectrum analyze examples/sample.wav --open`}</pre>
             <p className="microcopy" style={{ marginTop: 12 }}>
-              `make demo` seeds importable sessions, while `spectrum analyze` creates a new bundle from one local recording and opens the session view.
+              `make demo` seeds importable sessions, while `spectrum analyze` creates a report-backed bundle from one local recording and opens the session view.
             </p>
           </div>
           <div className="panel panel-spacious">
-            <span className="sample-meta">What one bundle gives you</span>
+            <span className="sample-meta">What one report gives you</span>
             <div className="stack compact" style={{ marginTop: 12 }}>
               <div className="info-row">
-                <strong>Transcript + timing</strong>
-                <span className="microcopy">Sentence spans, tokens, turn timing, and question-to-answer linkage.</span>
+                <strong>Conversation diagnosis</strong>
+                <span className="microcopy">Outcome, top risks, likely causes, confidence, and recommended next checks.</span>
               </div>
               <div className="info-row">
-                <strong>Speakers + roles</strong>
-                <span className="microcopy">Human↔AI role posture, diarization state, and talk-balance context.</span>
+                <strong>Evidence-linked findings</strong>
+                <span className="microcopy">Latency, unresolved intent, answer quality, interruptions, uncertainty, and recovery attempts.</span>
               </div>
               <div className="info-row">
-                <strong>Cues + signals</strong>
-                <span className="microcopy">Non-verbal events, prosody cues, and evidence-classed behavioral signals.</span>
+                <strong>Human + agent perspectives</strong>
+                <span className="microcopy">Separate sections for human experience, agent behavior, and beginning/middle/end arc.</span>
               </div>
               <div className="info-row">
-                <strong>Trust + coverage</strong>
-                <span className="microcopy">Readiness tier, degraded reasons, profile coverage, and explainability masks.</span>
+                <strong>Trust limits</strong>
+                <span className="microcopy">Role confidence, transcript quality, diarization readiness, and audio caveats.</span>
               </div>
             </div>
           </div>
@@ -172,9 +172,9 @@ export default async function HomePage({ searchParams }: PageProps) {
         <div className="section-heading">
           <div>
             <span className="eyebrow muted">Recent sessions</span>
-            <h2>Analyze one file, then inspect what happened</h2>
+            <h2>Analyze one file, then read the conversation report</h2>
           </div>
-          <span className="microcopy">The main product story is session-first. Cohorts and benchmarks come later.</span>
+          <span className="microcopy">The report is primary. Cohorts and benchmarks come from report fields later.</span>
         </div>
 
         <form className="filter-bar" method="get">

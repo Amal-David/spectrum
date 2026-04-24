@@ -1,17 +1,17 @@
 # Spectrum
 
-## Open-source call analytics SDK and UI for session bundles
+## Comprehensive conversation reports for human-AI voice calls
 
-Spectrum turns one audio file into one **session bundle**: transcript, timing, speakers, readiness, waveform, spectrogram, prosody, cues, profile coverage, and evidence-backed behavioral signals.
+Spectrum turns one human-AI voice call into one **conversation report**: outcome, breakdowns, likely causes, confidence, evidence, and next checks. Under the report, Spectrum still writes a portable **session bundle** with transcript, timing, speakers, readiness, waveform, spectrogram, prosody, cues, profile coverage, and evidence-backed behavioral signals.
 
 The product is built around one primary loop:
 
 1. bootstrap the local stack
 2. analyze one recording
-3. open one session
-4. inspect what happened and why the system believes it
+3. open one conversation report
+4. inspect every claim against transcript/audio evidence
 
-Everything else in the repo builds on top of that bundle model.
+Everything else in the repo builds on top of that report-backed bundle model.
 
 ## 3-minute quickstart
 
@@ -27,33 +27,45 @@ What to expect:
 - the API starts on `http://127.0.0.1:8000`
 - the dashboard starts on `http://127.0.0.1:3000`
 - `spectrum analyze` writes a new run under `runs/<session_id>/`
-- `--open` takes you straight to the session workspace
+- `--open` takes you straight to the report-first session page
 
 If you want to exercise the API directly, see [examples/curl.md](./examples/curl.md) or run [examples/quickstart.py](./examples/quickstart.py).
 
+## Sample conversation reports
+
+To show the product direction without running the full app, open [examples/conversation_reports/index.html](./examples/conversation_reports/index.html).
+
+The sample pack includes synthetic reports for customer support, appointment scheduling, outbound sales qualification, and billing/payment follow-up, plus structured sample data in [examples/conversation_reports/sample_reports.json](./examples/conversation_reports/sample_reports.json).
+
 ## What Spectrum is
 
-Spectrum is an open-source voice analytics foundation for teams working with recorded conversations, especially human↔AI calls.
+Spectrum is an open-source voice analytics foundation for teams debugging recorded human↔AI conversations.
 
-It is designed for workflows where transcripts alone are not enough:
+It is designed for workflows where transcripts alone are not enough and every call needs a useful diagnostic report:
 
-- support QA
-- user research and interviews
-- coaching and call review
 - voice-agent debugging
 - product ops for conversation systems
+- support QA and user research as adjacent report modes
+- coaching and call review as later report templates
 
-## The session bundle
+## The conversation report
 
-Every analysis ends in one durable bundle that can be:
+Every analysis ends in one diagnostic report that can be:
 
 - inspected in the dashboard
 - fetched through the API
+- traced back to transcript/audio evidence
+- compared across agent versions
+- aggregated into cohorts later
+
+The session bundle remains the infrastructure boundary underneath the report. It can still be:
+
+- reused by developers
 - compared across sessions
 - aggregated into cohorts
 - evaluated against benchmark tasks
 
-The bundle is the core product boundary.
+The report is the primary product object; the bundle is the portable infrastructure object.
 
 ## Analyze one file
 
@@ -80,11 +92,11 @@ Then:
 
 ## Open the dashboard
 
-The dashboard is API-first and centered on the session workflow:
+The dashboard is API-first and centered on the conversation-report workflow:
 
 - home page: analyze one file, recent sessions, quickstart guidance
-- session page: transcript, timing, cues, signals, and trust/coverage
-- compare page: side-by-side bundle inspection
+- session page: report diagnosis, findings, trust limits, transcript, timing, cues, and evidence
+- compare page: side-by-side run inspection
 
 Advanced surfaces remain available, but they are secondary:
 

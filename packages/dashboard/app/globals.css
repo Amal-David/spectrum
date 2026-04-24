@@ -302,6 +302,17 @@ select {
   padding: 18px;
 }
 
+.context-field-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.context-field-grid label {
+  display: grid;
+  gap: 6px;
+}
+
 .preflight-grid,
 .progress-meta {
   display: grid;
@@ -567,6 +578,19 @@ select {
 .list-row {
   display: grid;
   gap: 4px;
+}
+
+.report-finding-row {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.report-finding-row:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
 }
 
 .stack {

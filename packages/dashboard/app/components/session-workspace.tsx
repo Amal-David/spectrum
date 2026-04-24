@@ -475,6 +475,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
             {items.map((question) => (
               <button
                 className="question-card compact-card"
+                id={`question-${question.question_id}`}
                 key={question.question_id}
                 onClick={() => {
                   const turn = bundle.turns.find((item) => item.turn_id === question.question_turn_id);
@@ -534,7 +535,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
       <>
         <div className="stack compact">
           {items.map((event) => (
-            <button className="info-row event-row compact-card" key={event.event_id} onClick={() => seekToMs(event.begin_ms)} type="button">
+            <button className="info-row event-row compact-card" id={`event-${event.event_id}`} key={event.event_id} onClick={() => seekToMs(event.begin_ms)} type="button">
               <strong>{event.type}</strong>
               <span className="microcopy">
                 {formatClock(event.begin_ms)} to {formatClock(event.end_ms)} · {event.severity}
@@ -553,7 +554,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
   }
 
   return (
-    <section className="detail-layout workspace-layout">
+    <section className="detail-layout workspace-layout" id="evidence-workspace">
       <div className="detail-main workspace-main">
         <section className="panel panel-spacious inspector-panel">
           <div className="section-heading">
@@ -877,6 +878,7 @@ export function SessionWorkspace({ jobId, audioSrc, spectrogramSrc, bundle }: Se
                   <button
                     key={sentence.sentence_id}
                     className={`sentence-card ${emotionTone(sentence.emotion_label)} ${sentence.display_state} ${active ? "active" : ""}`}
+                    id={`turn-${sentence.turn_id}`}
                     onClick={() => seekToMs(sentence.start_ms)}
                     type="button"
                   >

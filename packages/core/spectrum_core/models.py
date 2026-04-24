@@ -18,6 +18,22 @@ ProviderKind = Literal["transcription", "diarization", "role_analysis", "alignme
 DistributionValueType = Literal["count", "average", "percent"]
 BenchmarkTaskType = Literal["sentence_emotion", "utterance_emotion", "sentiment", "diarization_overlap", "nonverbal_cue_tagging"]
 EvidenceClass = Literal["benchmark_backed", "model_backed", "heuristic_backed", "metadata_backed"]
+ReportSeverity = Literal["info", "watch", "risk", "critical"]
+ReportFindingSource = Literal["deterministic", "provider", "hybrid"]
+ConversationReportCategory = Literal[
+    "intent_resolution",
+    "answer_quality",
+    "agent_latency",
+    "human_wait",
+    "turn_taking",
+    "interruption_overlap",
+    "clarification_loop",
+    "human_uncertainty",
+    "friction_or_escalation",
+    "agent_recovery",
+    "role_confidence",
+    "transcript_or_audio_risk",
+]
 
 
 class DatasetReference(BaseModel):
@@ -398,6 +414,59 @@ class SignalCard(BaseModel):
     explainability_mask: list[str] = Field(default_factory=list)
 
 
+class ConversationReportExecutiveSummary(BaseModel):
+    overall_diagnosis: str = "Conversation report has not been generated yet."
+    call_outcome: str = "unknown"
+    top_risks: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    recommended_next_action: str = "Run or rebuild the session analysis to generate a report."
+
+
+class ConversationReportFinding(BaseModel):
+    finding_id: str
+    category: ConversationReportCategory
+    title: str
+    severity: ReportSeverity = "watch"
+    confidence: float = 0.0
+    claim: str
+    impact: str
+    likely_cause: str
+    time_window: TimeWindow | None = None
+    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    related_metrics: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
+    suggested_next_check: str
+    source: ReportFindingSource = "deterministic"
+
+
+class ConversationReportSection(BaseModel):
+    label: str
+    summary: str = ""
+    confidence: float = 0.0
+    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    details: list[str] = Field(default_factory=list)
+
+
+class ConversationReportTrustLimit(BaseModel):
+    key: str
+    label: str
+    severity: ReportSeverity = "watch"
+    confidence: float = 0.0
+    summary: str
+    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+
+
+class ConversationReport(BaseModel):
+    report_version: str = "0.1"
+    report_type: str = "human_ai_diagnostic"
+    executive_summary: ConversationReportExecutiveSummary = Field(default_factory=ConversationReportExecutiveSummary)
+    findings: list[ConversationReportFinding] = Field(default_factory=list)
+    conversation_arc: list[ConversationReportSection] = Field(default_factory=list)
+    human_experience: ConversationReportSection = Field(default_factory=lambda: ConversationReportSection(label="Human experience"))
+    agent_behavior: ConversationReportSection = Field(default_factory=lambda: ConversationReportSection(label="Agent behavior"))
+    trust_limits: list[ConversationReportTrustLimit] = Field(default_factory=list)
+    context: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
+
+
 class StageStatus(BaseModel):
     key: str
     label: str
@@ -457,6 +526,7 @@ class SessionBundle(BaseModel):
     questions: list[QuestionAnalyticsRow] = Field(default_factory=list)
     content: ContentSummary = Field(default_factory=ContentSummary)
     signals: list[SignalCard] = Field(default_factory=list)
+    conversation_report: ConversationReport = Field(default_factory=ConversationReport)
     metrics: dict[str, MetricSummary] = Field(default_factory=dict)
     diagnostics: Diagnostics = Field(default_factory=Diagnostics)
     stage_status: list[StageStatus] = Field(default_factory=list)
