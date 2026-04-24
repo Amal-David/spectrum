@@ -141,8 +141,30 @@ def analyze_conversation_with_openai(
                     },
                 },
                 "human_summary": {"type": "string"},
+                "report_enrichment": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "overall_diagnosis": {"type": "string"},
+                        "call_outcome": {"type": "string"},
+                        "likely_causes": {"type": "array", "items": {"type": "string"}},
+                        "unresolved_intents": {"type": "array", "items": {"type": "string"}},
+                        "agent_behavior_notes": {"type": "array", "items": {"type": "string"}},
+                        "recovery_notes": {"type": "array", "items": {"type": "string"}},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": [
+                        "overall_diagnosis",
+                        "call_outcome",
+                        "likely_causes",
+                        "unresolved_intents",
+                        "agent_behavior_notes",
+                        "recovery_notes",
+                        "confidence",
+                    ],
+                },
             },
-            "required": ["speaker_roles", "turn_annotations", "human_summary"],
+            "required": ["speaker_roles", "turn_annotations", "human_summary", "report_enrichment"],
         },
     }
 
@@ -151,7 +173,9 @@ def analyze_conversation_with_openai(
         "Classify each speaker as human, ai, or unknown. "
         "The output must be conservative: if unsure, return unknown. "
         "Then annotate each turn with a primary perceived emotion and sentiment. "
-        "Make the human the primary subject of interpretation and keep the AI as context.\n\n"
+        "Make the human the primary subject of interpretation and keep the AI as context. "
+        "Also enrich a product diagnostic report: identify likely causes, unresolved intents, agent behavior notes, "
+        "and recovery notes. Keep every interpretation grounded in the provided turns and lower confidence when evidence is weak.\n\n"
         f"Metadata hints: {json.dumps({'human_speaker_hint': metadata.get('human_speaker_hint'), 'ai_speaker_hint': metadata.get('ai_speaker_hint'), 'speaker_role_hints': metadata.get('speaker_role_hints', {})})}\n\n"
         f"Turns:\n{transcript_preview}"
     )

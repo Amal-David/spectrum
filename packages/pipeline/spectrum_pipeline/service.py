@@ -20,6 +20,7 @@ from spectrum_core.constants import RUNS_DIR
 from spectrum_core.models import (
     AnalysisMode,
     ArtifactPaths,
+    ConversationReport,
     ContentSummary,
     DatasetReference,
     DiarizationSegment,
@@ -71,6 +72,7 @@ from spectrum_core.models import (
 from spectrum_core.registry import build_adapter_inventory
 from .acoustic_cue_provider import detect_acoustic_vocal_cues, load_acoustic_cue_cache, save_acoustic_cue_cache
 from .alignment_provider import align_words_with_whisperx, load_alignment_cache, save_alignment_cache
+from .conversation_report import build_conversation_report
 from .diarization_provider import diarize_with_pyannote, load_diarization_cache, save_diarization_cache
 from .nonverbal_provider import detect_textual_vocal_cues
 from .openai_provider import analyze_conversation_with_openai, openai_enabled, transcribe_audio_with_openai
@@ -1509,6 +1511,8 @@ def enrich_metadata_with_openai(job_id: str, audio_path: Path, metadata: dict[st
             if str(item.get("turn_id") or "").strip()
         }
         updates["openai_human_summary"] = str(analysis.get("human_summary") or "")
+        if isinstance(analysis.get("report_enrichment"), dict):
+            updates["openai_report_enrichment"] = analysis["report_enrichment"]
     updates["openai_provider_used"] = True
     updates["openai_provider_warnings"] = warnings
     _save_provider_cache(
@@ -1544,6 +1548,10 @@ def build_speaker_role_summary(
     known_speakers = [speaker.speaker_id for speaker in speakers] or sorted({turn.speaker_id for turn in turns})
     hint_source = str(metadata.get("speaker_role_hint_source") or "metadata_hint")
     hint_assignments = dict(metadata.get("speaker_role_hints") or {})
+    if metadata.get("human_speaker_hint"):
+        hint_assignments.setdefault(str(metadata["human_speaker_hint"]), "human")
+    if metadata.get("ai_speaker_hint"):
+        hint_assignments.setdefault(str(metadata["ai_speaker_hint"]), "ai")
     detail_rows = {str(item.get("speaker_id")): item for item in metadata.get("openai_speaker_role_details", [])}
     role_notes: list[str] = []
     assignments: list[SpeakerRoleAssignment] = []
@@ -3424,6 +3432,7 @@ def build_session_bundle(
     signals: list[SignalCard],
     stage_status: list[StageStatus],
     readiness_tier: ReadinessTier,
+    conversation_report: ConversationReport | None = None,
 ) -> SessionBundle:
     return SessionBundle(
         session=SessionDescriptor(
@@ -3463,6 +3472,7 @@ def build_session_bundle(
         questions=questions,
         content=content,
         signals=signals,
+        conversation_report=conversation_report or ConversationReport(),
         metrics=result.metrics,
         diagnostics=result.diagnostics,
         stage_status=stage_status,
@@ -3794,6 +3804,22 @@ def create_session_result(
         timeline_tracks,
     )
     readiness_tier = _readiness_tier(transcript, diarization, nonverbal_cues)
+    conversation_report = build_conversation_report(
+        session_id=job_id,
+        metadata=metadata,
+        quality=quality,
+        speaker_roles=speaker_roles,
+        diarization=diarization,
+        speakers=speakers,
+        turns=turns,
+        events=events,
+        questions=questions,
+        content=content,
+        signals=signals,
+        metrics=result.metrics,
+        diagnostics=diagnostics,
+        stage_status=stage_status,
+    )
     bundle = build_session_bundle(
         result,
         session_title=str(metadata.get("title") or original_path.stem.replace("_", " ").title()),
@@ -3817,6 +3843,7 @@ def create_session_result(
         signals=signals,
         stage_status=stage_status,
         readiness_tier=readiness_tier,
+        conversation_report=conversation_report,
     )
     if progress:
         progress("persist", JOB_STAGE_BY_KEY["persist"]["label"])
@@ -3935,6 +3962,22 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
                 notes=["heuristic_role_analysis"],
             ),
         ]
+    conversation_report = build_conversation_report(
+        session_id=result.job_id,
+        metadata=metadata,
+        quality=result.quality,
+        speaker_roles=speaker_roles,
+        diarization=diarization,
+        speakers=speakers,
+        turns=turns,
+        events=result.events,
+        questions=questions,
+        content=content,
+        signals=signals,
+        metrics=metrics,
+        diagnostics=rebuilt_result.diagnostics,
+        stage_status=stage_status,
+    )
     return build_session_bundle(
         rebuilt_result,
         session_title=str(metadata.get("title") or (result.source.metadata.get("title") if result.source and result.source.metadata else None) or result.job_id),
@@ -3958,6 +4001,7 @@ def bundle_from_result(result: SessionResult, metadata: dict[str, Any] | None = 
         signals=signals,
         stage_status=stage_status,
         readiness_tier=_readiness_tier(result.transcript, diarization, nonverbal_cues),
+        conversation_report=conversation_report,
     )
 
 

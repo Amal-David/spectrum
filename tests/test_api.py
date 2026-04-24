@@ -66,6 +66,8 @@ def test_session_create_upload_and_process_flow(tmp_path: Path) -> None:
     assert bundle_payload["session"]["session_id"] == job_id
     assert "questions" in bundle_payload
     assert "signals" in bundle_payload
+    assert "conversation_report" in bundle_payload
+    assert bundle_payload["conversation_report"]["report_type"] == "human_ai_diagnostic"
     assert bundle_payload["profile_display"]
     assert bundle_payload["content"]["sentences"]
 
@@ -135,6 +137,7 @@ def test_async_process_reports_status_and_completes(tmp_path: Path) -> None:
     bundle = client.get(f"/api/v1/sessions/{job_id}/bundle")
     assert bundle.status_code == 200
     assert bundle.json()["content"]["transcript"] == "hello there from async spectrum"
+    assert bundle.json()["conversation_report"]["executive_summary"]["confidence"] >= 0
     assert bundle.json()["timeline_tracks"]
 
 

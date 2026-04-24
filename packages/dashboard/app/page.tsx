@@ -1,15 +1,24 @@
 import Link from "next/link";
 
-import { formatMetric, formatPct, loadDashboardSnapshot, loadSessionBundles } from "../lib/data";
+import { fetchDatasets, fetchSessionIndex } from "../lib/api-client";
+import { loadBenchmarkSnapshot } from "../lib/benchmark-client";
+import { loadCohortDistributions, loadCohortSessions, loadCohortSummary, loadCohortTrends } from "../lib/cohort-client";
+import { formatMetric, type DashboardFilters } from "../lib/data";
 import { AnalyzeAudioPanel } from "./components/analyze-audio-panel";
+
+export const dynamic = "force-dynamic";
+
+function singleParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function stageCoverageLabel(readyCount: number, total: number) {
   if (!total) return "No imported sessions";
   return `${readyCount}/${total} sessions`;
 }
 
-function singleParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
+function kpiValue(kpis: Array<{ key: string; label: string; value: number; unit?: string | null }>, key: string) {
+  return kpis.find((kpi) => kpi.key === key);
 }
 
 type PageProps = {
@@ -18,7 +27,7 @@ type PageProps = {
 
 export default async function HomePage({ searchParams }: PageProps) {
   const resolvedSearchParams = (await searchParams) ?? {};
-  const filters = {
+  const filters: DashboardFilters = {
     sourceType: singleParam(resolvedSearchParams.source_type) ?? "all",
     analysisMode: singleParam(resolvedSearchParams.analysis_mode) ?? "all",
     language: singleParam(resolvedSearchParams.language) ?? "all",
@@ -27,69 +36,147 @@ export default async function HomePage({ searchParams }: PageProps) {
     readinessTier: singleParam(resolvedSearchParams.readiness_tier) ?? "all",
     rolePresence: singleParam(resolvedSearchParams.role_presence) ?? "all",
   };
-  const allBundles = loadSessionBundles();
-  const snapshot = loadDashboardSnapshot(filters);
-  const { bundles, datasets, totals, cohorts, benchmarks } = snapshot;
-  const defaultCompareIds = bundles.slice(0, 2).map((bundle) => bundle.session.session_id).join(",");
-  const cleanRuns = bundles.filter((bundle) => bundle.quality.noise_ratio < 0.2).length;
-  const watchRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.2 && bundle.quality.noise_ratio < 0.35).length;
-  const riskyRuns = bundles.filter((bundle) => bundle.quality.noise_ratio >= 0.35).length;
-  const sourceOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.source_type))).sort();
-  const languageOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.language ?? "unknown"))).sort();
-  const analysisOptions = Array.from(new Set(allBundles.map((bundle) => bundle.session.analysis_mode))).sort();
+
+  let apiError: string | null = null;
+  let sessionIndex = [] as Awaited<ReturnType<typeof fetchSessionIndex>>;
+  let datasets = [] as Awaited<ReturnType<typeof fetchDatasets>>;
+  let cohortSummary = { kpis: [], phase_summaries: [], dominant_emotions: [], runs: [] } as Awaited<ReturnType<typeof loadCohortSummary>>;
+  let cohortTrends = [] as Awaited<ReturnType<typeof loadCohortTrends>>;
+  let cohortDistributions = [] as Awaited<ReturnType<typeof loadCohortDistributions>>;
+  let benchmarks = { registry: [], results: [] } as Awaited<ReturnType<typeof loadBenchmarkSnapshot>>;
+
+  try {
+    [sessionIndex, datasets, cohortSummary, cohortTrends, cohortDistributions, benchmarks] = await Promise.all([
+      fetchSessionIndex(),
+      fetchDatasets(),
+      loadCohortSummary(filters),
+      loadCohortTrends(filters),
+      loadCohortDistributions(filters),
+      loadBenchmarkSnapshot(),
+    ]);
+  } catch {
+    apiError = "The dashboard could not reach the Spectrum API. Start it with `make dev` or `pnpm api:dev` to load live sessions.";
+  }
+
+  const recentRuns = cohortSummary.runs.slice(0, 6);
+  const sessionIndexById = new Map(sessionIndex.map((row) => [row.session_id, row]));
+  const sourceOptions = Array.from(new Set(sessionIndex.map((bundle) => bundle.source_type))).sort();
+  const languageOptions = Array.from(new Set(sessionIndex.map((bundle) => bundle.language ?? "unknown"))).sort();
+  const analysisOptions = Array.from(new Set(sessionIndex.map((bundle) => bundle.analysis_mode))).sort();
+  const defaultCompareIds = recentRuns.slice(0, 2).map((run) => run.session_id).join(",");
+  const runCount = kpiValue(cohortSummary.kpis, "run_count");
+  const usableRunRate = kpiValue(cohortSummary.kpis, "usable_run_rate");
+  const averageSnr = kpiValue(cohortSummary.kpis, "avg_snr_db");
+  const topReadiness = cohortDistributions.find((distribution) => distribution.key === "readiness_mix")?.items[0];
 
   return (
     <main className="analytics-shell">
       <section className="analytics-hero">
         <div className="hero-copy">
-          <span className="eyebrow">Spectrum Analytics Workspace</span>
-          <h1>Google Analytics for audio sessions, grounded in turns, quality, and behavioral evidence.</h1>
+          <span className="eyebrow">Spectrum</span>
+          <h1>Turn one human-AI voice call into a comprehensive conversation report.</h1>
           <p>
-            Every imported call lands in one normalized bundle: audio artifacts, quality gates, structure, transcript context,
-            question analytics, and signal cards with explainability masks.
+            Spectrum starts with the report: what happened, where the agent experience broke, what evidence supports each claim, and
+            what to inspect next. Bundles, cohorts, and benchmarks are the infrastructure underneath.
           </p>
           <div className="hero-actions">
-            <Link href={defaultCompareIds ? `/compare?ids=${defaultCompareIds}` : "/compare"} className="primary-link">
-              Open Compare
+            <Link href={recentRuns[0] ? `/sessions/${recentRuns[0].session_id}` : "#quickstart"} className="primary-link">
+              Open latest session
             </Link>
-            <span className="microcopy">Import demo-pack or dataset samples through the API, then review them here without rerunning analysis.</span>
+            <Link href={defaultCompareIds ? `/compare?ids=${defaultCompareIds}` : "/compare"} className="filter-toggle active">
+              Compare two runs
+            </Link>
           </div>
         </div>
 
         <div className="hero-rail">
           <article className="hero-meter">
-            <span className="sample-meta">Total runs</span>
-            <strong>{totals.runs}</strong>
-            <span className="microcopy">Synthetic + downloaded sessions in one workspace</span>
+            <span className="sample-meta">Runs in workspace</span>
+            <strong>{runCount ? formatMetric(runCount.value) : "0"}</strong>
+            <span className="microcopy">Every run becomes one diagnostic report plus one durable bundle.</span>
           </article>
           <article className="hero-meter">
-            <span className="sample-meta">Usable runs</span>
-            <strong>{totals.usableRuns}</strong>
-            <span className="microcopy">Quality gate passing now</span>
-          </article>
-          <article className="hero-meter">
-            <span className="sample-meta">Datasets</span>
-            <strong>{totals.datasetCount}</strong>
-            <span className="microcopy">Manifest coverage + import health</span>
+            <span className="sample-meta">Usable-run rate</span>
+            <strong>{usableRunRate ? formatMetric(usableRunRate.value, usableRunRate.unit) : "0%"}</strong>
+            <span className="microcopy">Degraded calls still get trust limits instead of vague dashboards.</span>
           </article>
           <article className="hero-meter">
             <span className="sample-meta">Average SNR</span>
-            <strong>{totals.avgSNR.toFixed(1)} dB</strong>
-            <span className="microcopy">Waveform-estimated baseline across imported runs</span>
+            <strong>{averageSnr ? formatMetric(averageSnr.value, averageSnr.unit) : "Unknown"}</strong>
+            <span className="microcopy">Quality posture affects which report claims are safe to trust.</span>
           </article>
+          <article className="hero-meter">
+            <span className="sample-meta">Top readiness tier</span>
+            <strong>{topReadiness?.label ?? "No runs yet"}</strong>
+            <span className="microcopy">Readiness tells the report what can and cannot be concluded.</span>
+          </article>
+        </div>
+      </section>
+
+      <section className="panel panel-spacious" id="quickstart">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow muted">First 10 minutes</span>
+            <h2>One blessed report workflow</h2>
+          </div>
+          <span className="microcopy">If Spectrum feels useful here, the rest of the platform becomes easier to trust.</span>
+        </div>
+        <div className="analytics-grid" style={{ gap: 18 }}>
+          <div className="panel panel-spacious">
+            <span className="sample-meta">Quickstart</span>
+            <pre
+              style={{
+                marginTop: 12,
+                padding: "16px 18px",
+                borderRadius: 18,
+                background: "rgba(18, 41, 67, 0.95)",
+                color: "#f7efe1",
+                fontSize: "0.95rem",
+                lineHeight: 1.7,
+                overflowX: "auto",
+              }}
+            >{`make bootstrap\nmake demo\nmake dev\nspectrum analyze examples/sample.wav --open`}</pre>
+            <p className="microcopy" style={{ marginTop: 12 }}>
+              `make demo` seeds importable sessions, while `spectrum analyze` creates a report-backed bundle from one local recording and opens the session view.
+            </p>
+          </div>
+          <div className="panel panel-spacious">
+            <span className="sample-meta">What one report gives you</span>
+            <div className="stack compact" style={{ marginTop: 12 }}>
+              <div className="info-row">
+                <strong>Conversation diagnosis</strong>
+                <span className="microcopy">Outcome, top risks, likely causes, confidence, and recommended next checks.</span>
+              </div>
+              <div className="info-row">
+                <strong>Evidence-linked findings</strong>
+                <span className="microcopy">Latency, unresolved intent, answer quality, interruptions, uncertainty, and recovery attempts.</span>
+              </div>
+              <div className="info-row">
+                <strong>Human + agent perspectives</strong>
+                <span className="microcopy">Separate sections for human experience, agent behavior, and beginning/middle/end arc.</span>
+              </div>
+              <div className="info-row">
+                <strong>Trust limits</strong>
+                <span className="microcopy">Role confidence, transcript quality, diarization readiness, and audio caveats.</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       <AnalyzeAudioPanel />
 
+      {apiError ? <section className="empty-state">{apiError}</section> : null}
+
       <section className="panel panel-spacious">
         <div className="section-heading">
           <div>
-            <span className="eyebrow muted">Cohort Dashboard</span>
-            <h2>Product-ops baseline across saved bundles</h2>
+            <span className="eyebrow muted">Recent sessions</span>
+            <h2>Analyze one file, then read the conversation report</h2>
           </div>
-          <span className="microcopy">Filter the saved bundles by source, mode, language, readiness, duration, quality, and human↔AI posture.</span>
+          <span className="microcopy">The report is primary. Cohorts and benchmarks come from report fields later.</span>
         </div>
+
         <form className="filter-bar" method="get">
           <select className="filter-select" defaultValue={filters.sourceType} name="source_type">
             <option value="all">All source types</option>
@@ -122,13 +209,6 @@ export default async function HomePage({ searchParams }: PageProps) {
             <option value="transcript_only">Transcript only</option>
             <option value="blocked">Blocked</option>
           </select>
-          <select className="filter-select" defaultValue={filters.durationBand} name="duration_band">
-            <option value="all">All duration bands</option>
-            <option value="under_3m">Under 3m</option>
-            <option value="3m_to_10m">3m to 10m</option>
-            <option value="10m_to_30m">10m to 30m</option>
-            <option value="30m_plus">30m+</option>
-          </select>
           <select className="filter-select" defaultValue={filters.qualityBand} name="quality_band">
             <option value="all">All quality bands</option>
             <option value="clean">Clean</option>
@@ -149,373 +229,211 @@ export default async function HomePage({ searchParams }: PageProps) {
             Clear
           </Link>
         </form>
-        <div className="badge-row">
-          <span className="badge accent">Runs in view {bundles.length}</span>
-          <span className="badge">Source {filters.sourceType === "all" ? "all" : filters.sourceType}</span>
-          <span className="badge">Mode {filters.analysisMode === "all" ? "all" : filters.analysisMode}</span>
-          <span className="badge">Language {filters.language === "all" ? "all" : filters.language}</span>
-          <span className="badge">Readiness {filters.readinessTier === "all" ? "all" : filters.readinessTier}</span>
-        </div>
+
         <div className="ribbon-grid" style={{ marginTop: 18 }}>
-          {cohorts.kpis.map((kpi) => (
+          {cohortSummary.kpis.slice(0, 5).map((kpi) => (
             <article className="ribbon-card" key={kpi.key}>
               <span className="sample-meta">{kpi.label}</span>
               <strong>{formatMetric(kpi.value, kpi.unit)}</strong>
             </article>
           ))}
         </div>
-      </section>
 
-      <section className="ribbon-grid">
-        <article className="ribbon-card">
-          <span className="sample-meta">Quality distribution</span>
-          <div className="quality-bars">
-            <div>
-              <strong>{cleanRuns}</strong>
-              <span className="microcopy">clean</span>
-            </div>
-            <div>
-              <strong>{watchRuns}</strong>
-              <span className="microcopy">watch</span>
-            </div>
-            <div>
-              <strong>{riskyRuns}</strong>
-              <span className="microcopy">risky</span>
-            </div>
-          </div>
-        </article>
-        <article className="ribbon-card">
-          <span className="sample-meta">Source mix</span>
-          <strong>{bundles.filter((bundle) => bundle.session.source_type === "materialized_audio_dataset").length} downloaded sessions</strong>
-          <span className="microcopy">{bundles.filter((bundle) => bundle.session.source_type === "demo_pack_zip").length} demo-pack narratives</span>
-        </article>
-        <article className="ribbon-card">
-          <span className="sample-meta">Behavioral moments</span>
-          <strong>{bundles.reduce((sum, bundle) => sum + bundle.questions.length, 0)} questions mapped</strong>
-          <span className="microcopy">{bundles.reduce((sum, bundle) => sum + bundle.events.length, 0)} events attached to the timeline</span>
-        </article>
-        <article className="ribbon-card">
-          <span className="sample-meta">Readiness posture</span>
-          <strong>{cohorts.distributions.find((distribution) => distribution.key === "readiness_mix")?.items[0]?.label ?? "No runs yet"}</strong>
-          <span className="microcopy">Readiness tiers stay visible so transcript-only runs remain usable instead of looking broken.</span>
-        </article>
-      </section>
-
-      <section className="analytics-grid">
-        <div className="analytics-main">
-          <section className="panel panel-spacious">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow muted">Overview</span>
-                <h2>Cohort trendline</h2>
-              </div>
-              <span className="microcopy">Daily bundle rollups keep human hesitation, friction, rapport, and frustration in one scan line.</span>
-            </div>
-            <div className="table-shell">
-              <table className="analytics-table">
-                <thead>
-                  <tr>
-                    <th>Bucket</th>
-                    <th>Runs</th>
-                    <th>Usable</th>
-                    <th>Avg SNR</th>
-                    <th>Hesitation</th>
-                    <th>Friction</th>
-                    <th>Rapport</th>
-                    <th>Frustration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cohorts.trends.length ? (
-                    cohorts.trends.map((trend) => (
-                      <tr key={trend.bucket}>
-                        <td><strong>{trend.bucket}</strong></td>
-                        <td>{trend.run_count}</td>
-                        <td>{formatMetric(trend.usable_run_rate, "%")}</td>
-                        <td>{formatMetric(trend.avg_snr_db, "dB")}</td>
-                        <td>{Math.round(trend.hesitation_avg)}</td>
-                        <td>{Math.round(trend.friction_avg)}</td>
-                        <td>{Math.round(trend.rapport_avg)}</td>
-                        <td>{Math.round(trend.frustration_avg)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={8}><div className="empty-state">Import or bootstrap a few sessions to populate cohort trends.</div></td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow muted">Distributions</span>
-                <h2>Cohort mixes and long-call drift</h2>
-              </div>
-              <span className="microcopy">Quality bands, source mix, duration mix, dominant human emotions, and first/middle/final third summaries.</span>
-            </div>
-            <div className="alert-grid">
-              {cohorts.distributions.map((distribution) => (
-                <article className="alert-card" key={distribution.key}>
-                  <span className="badge accent">{distribution.label}</span>
+        <div className="session-grid" style={{ marginTop: 18 }}>
+          {recentRuns.length ? (
+            recentRuns.map((run) => {
+              const indexed = sessionIndexById.get(run.session_id);
+              return (
+                <Link href={`/sessions/${run.session_id}`} className="session-card" key={run.session_id}>
                   <div className="badge-row">
-                    {distribution.items.slice(0, 6).map((item) => (
-                      <span className="badge" key={`${distribution.key}-${item.key}`}>
-                        {item.label} {item.value}
-                      </span>
-                    ))}
+                    <span className={`badge ${run.usable ? "ok" : "warn"}`}>{run.usable ? "usable" : "review"}</span>
+                    <span className="badge">{run.analysis_mode}</span>
+                    <span className="badge accent">{run.readiness_tier}</span>
                   </div>
-                </article>
-              ))}
-            </div>
-            <div className="table-shell" style={{ marginTop: 18 }}>
-              <table className="analytics-table">
-                <thead>
-                  <tr>
-                    <th>Phase</th>
-                    <th>Hesitation</th>
-                    <th>Friction</th>
-                    <th>Rapport</th>
-                    <th>Frustration</th>
-                    <th>Dominant emotion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cohorts.phase_summaries.map((phase) => (
-                    <tr key={phase.phase}>
-                      <td><strong>{phase.phase.replaceAll("_", " ")}</strong></td>
-                      <td>{Math.round(phase.hesitation_avg)}</td>
-                      <td>{Math.round(phase.friction_avg)}</td>
-                      <td>{Math.round(phase.rapport_avg)}</td>
-                      <td>{Math.round(phase.frustration_avg)}</td>
-                      <td>{phase.dominant_emotion}</td>
+                  <h3>{run.title}</h3>
+                  <p className="sample-meta">
+                    {run.dataset_id ?? "ad hoc"} · {run.language ?? "unknown"} · {run.duration_sec.toFixed(1)} sec
+                  </p>
+                  <div className="session-card-metrics">
+                    <div>
+                      <span className="row-label">Average SNR</span>
+                      <strong>{formatMetric(indexed?.quality.avg_snr_db ?? null, "dB")}</strong>
+                    </div>
+                    <div>
+                      <span className="row-label">Noise ratio</span>
+                      <strong>{formatMetric(indexed?.quality.noise_ratio ?? null)}</strong>
+                    </div>
+                    <div>
+                      <span className="row-label">Top signal</span>
+                      <strong>{run.top_signal ?? "Pending"}</strong>
+                    </div>
+                    <div>
+                      <span className="row-label">Role posture</span>
+                      <strong>{run.human_present && run.ai_present ? "human + ai" : run.human_present ? "human" : run.ai_present ? "ai" : "unknown"}</strong>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })
+          ) : (
+            <div className="empty-state">No sessions match the current filters. Clear the filters or analyze a fresh file.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="panel panel-spacious">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow muted">Advanced</span>
+            <h2>Cohorts, datasets, and benchmarks</h2>
+          </div>
+          <span className="microcopy">These stay available, but they are now intentionally secondary to the session loop.</span>
+        </div>
+        <div className="analytics-grid">
+          <div className="analytics-main">
+            <section className="panel panel-spacious">
+              <span className="eyebrow muted">Cohort trendline</span>
+              <h2>Current workspace drift</h2>
+              <div className="table-shell" style={{ marginTop: 12 }}>
+                <table className="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Bucket</th>
+                      <th>Runs</th>
+                      <th>Usable</th>
+                      <th>Avg SNR</th>
+                      <th>Hesitation</th>
+                      <th>Friction</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow muted">Acquisition</span>
-                <h2>Dataset health and ingestion readiness</h2>
-              </div>
-              <span className="microcopy">Shows what is downloaded, what is blocked, and how much of each dataset is already imported.</span>
-            </div>
-            <div className="table-shell">
-              <table className="analytics-table">
-                <thead>
-                  <tr>
-                    <th>Dataset</th>
-                    <th>Status</th>
-                    <th>Languages</th>
-                    <th>Imported</th>
-                    <th>Stage coverage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {datasets.map((dataset) => {
-                    const readyStageCount = Object.values(dataset.stage_completeness).reduce((sum, value) => sum + value, 0);
-                    return (
-                      <tr key={dataset.dataset_id}>
-                        <td>
-                          <strong>{dataset.title}</strong>
-                          <div className="microcopy">{dataset.dataset_id}</div>
+                  </thead>
+                  <tbody>
+                    {cohortTrends.length ? (
+                      cohortTrends.map((trend) => (
+                        <tr key={trend.bucket}>
+                          <td><strong>{trend.bucket}</strong></td>
+                          <td>{trend.run_count}</td>
+                          <td>{formatMetric(trend.usable_run_rate, "%")}</td>
+                          <td>{formatMetric(trend.avg_snr_db, "dB")}</td>
+                          <td>{Math.round(trend.hesitation_avg)}</td>
+                          <td>{Math.round(trend.friction_avg)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6}>
+                          <div className="empty-state">Import demo data or analyze a few sessions to populate cohort trends.</div>
                         </td>
-                        <td>
-                          <span className={`badge ${dataset.health_status === "ready" ? "ok" : "warn"}`}>{dataset.health_status}</span>
-                          {dataset.health_detail ? <div className="microcopy">{dataset.health_detail}</div> : null}
-                        </td>
-                        <td>{dataset.language_labels.length ? dataset.language_labels.join(", ") : "Unknown"}</td>
-                        <td>
-                          <strong>{dataset.imported_count}</strong>
-                          <div className="microcopy">of {dataset.sample_count} available samples</div>
-                        </td>
-                        <td>{stageCoverageLabel(readyStageCount, dataset.imported_count || dataset.sample_count)}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow muted">Sessions</span>
-                <h2>Explorer</h2>
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <span className="microcopy">Session cards bias toward operational scanability instead of landing-page copy.</span>
-            </div>
-            <div className="session-grid">
-              {bundles.length ? (
-                bundles.map((bundle) => (
-                  <Link href={`/sessions/${bundle.session.session_id}`} className="session-card" key={bundle.session.session_id}>
+            </section>
+
+            <section className="panel panel-spacious">
+              <span className="eyebrow muted">Dataset health</span>
+              <h2>Imported coverage</h2>
+              <div className="table-shell" style={{ marginTop: 12 }}>
+                <table className="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Dataset</th>
+                      <th>Status</th>
+                      <th>Languages</th>
+                      <th>Imported</th>
+                      <th>Stage coverage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datasets.map((dataset) => {
+                      const readyStageCount = Object.values(dataset.stage_completeness).reduce((sum, value) => sum + value, 0);
+                      return (
+                        <tr key={dataset.dataset_id}>
+                          <td>
+                            <strong>{dataset.title}</strong>
+                            <div className="microcopy">{dataset.dataset_id}</div>
+                          </td>
+                          <td>
+                            <span className={`badge ${dataset.health_status === "ready" ? "ok" : "warn"}`}>{dataset.health_status}</span>
+                            {dataset.health_detail ? <div className="microcopy">{dataset.health_detail}</div> : null}
+                          </td>
+                          <td>{dataset.language_labels.length ? dataset.language_labels.join(", ") : "Unknown"}</td>
+                          <td>
+                            <strong>{dataset.imported_count}</strong>
+                            <div className="microcopy">of {dataset.sample_count} available samples</div>
+                          </td>
+                          <td>{stageCoverageLabel(readyStageCount, dataset.imported_count || dataset.sample_count)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <aside className="analytics-side">
+            <section className="panel panel-spacious">
+              <span className="eyebrow muted">Distribution mix</span>
+              <h2>Readiness and evidence</h2>
+              <div className="alert-grid" style={{ marginTop: 12 }}>
+                {cohortDistributions.slice(0, 4).map((distribution) => (
+                  <article className="alert-card" key={distribution.key}>
+                    <span className="badge accent">{distribution.label}</span>
                     <div className="badge-row">
-                      <span className={`badge ${bundle.quality.is_usable ? "ok" : "warn"}`}>{bundle.quality.is_usable ? "usable" : "review"}</span>
-                      <span className="badge">{bundle.session.analysis_mode}</span>
-                      <span className="badge accent">{bundle.session.source_type}</span>
-                    </div>
-                    <h3>{bundle.session.title}</h3>
-                    <p className="sample-meta">
-                      {bundle.session.dataset_id ?? "ad hoc"} · {bundle.session.language ?? "unknown"} · {bundle.session.duration_sec.toFixed(1)} sec
-                    </p>
-                    <div className="session-card-metrics">
-                      <div>
-                        <span className="row-label">Quality</span>
-                        <strong>{formatMetric(bundle.quality.avg_snr_db, "dB")}</strong>
-                      </div>
-                      <div>
-                        <span className="row-label">Noise ratio</span>
-                        <strong>{formatMetric(bundle.quality.noise_ratio, "ratio")}</strong>
-                      </div>
-                      <div>
-                        <span className="row-label">Questions</span>
-                        <strong>{bundle.questions.length}</strong>
-                      </div>
-                      <div>
-                        <span className="row-label">Top signal</span>
-                        <strong>{bundle.signals[0]?.label ?? "Pending"}</strong>
-                      </div>
-                    </div>
-                    <div className="badge-row">
-                      {bundle.signals.slice(0, 3).map((signal) => (
-                        <span key={signal.key} className={`badge ${signal.status === "risk" ? "warn" : signal.status === "healthy" ? "ok" : ""}`}>
-                          {signal.label} {signal.score}
+                      {distribution.items.slice(0, 5).map((item) => (
+                        <span className="badge" key={`${distribution.key}-${item.key}`}>
+                          {item.label} {item.value}
                         </span>
                       ))}
                     </div>
-                  </Link>
-                ))
-              ) : (
-                <div className="empty-state">No sessions match the current cohort filters.</div>
-              )}
-            </div>
-          </section>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel panel-spacious">
+              <span className="eyebrow muted">Benchmarks</span>
+              <h2>Coverage snapshot</h2>
+              <div className="table-shell" style={{ marginTop: 12 }}>
+                <table className="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Dataset</th>
+                      <th>Status</th>
+                      <th>Snapshot</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {benchmarks.registry.map((entry) => {
+                      const matching = benchmarks.results.filter((result) => result.dataset_id === entry.dataset_id);
+                      return (
+                        <tr key={entry.benchmark_id}>
+                          <td>
+                            <strong>{entry.title}</strong>
+                            <div className="microcopy">{entry.dataset_id}</div>
+                          </td>
+                          <td>
+                            <span className={`badge ${entry.status === "ready" ? "ok" : "warn"}`}>{entry.status}</span>
+                          </td>
+                          <td>
+                            <div className="badge-row">
+                              {matching.slice(0, 2).map((result) => (
+                                <span className="badge" key={result.benchmark_id}>
+                                  {result.task_type}: {result.metrics[0] ? formatMetric(result.metrics[0].value) : result.status}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </aside>
         </div>
-
-        <aside className="analytics-side">
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Quality</span>
-            <h2>Interpretation rules</h2>
-            <div className="stack compact">
-              <div className="info-row">
-                <strong>Low SNR guard</strong>
-                <span className="microcopy">Prosody-heavy signals are downweighted once average SNR falls below 10 dB.</span>
-              </div>
-              <div className="info-row">
-                <strong>Noisy answer starts</strong>
-                <span className="microcopy">Noise spikes and low-SNR windows discount hesitation instead of overcalling emotional hesitation.</span>
-              </div>
-              <div className="info-row">
-                <strong>VAD explainability</strong>
-                <span className="microcopy">False positives and negatives stay visible as events, not hidden inside summary scores.</span>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Signals</span>
-            <h2>Current workspace mix</h2>
-            <div className="signal-list">
-              {["hesitation", "friction", "rapport", "frustration_risk"].map((key) => {
-                const values = bundles.flatMap((bundle) => bundle.signals.filter((signal) => signal.key === key).map((signal) => signal.score));
-                const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-                return (
-                  <div className="signal-row" key={key}>
-                    <span className="row-label">{key.replaceAll("_", " ")}</span>
-                    <strong>{average.toFixed(0)}</strong>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Compare</span>
-            <h2>Side-by-side drilldown</h2>
-            <p className="microcopy" style={{ marginTop: 10 }}>
-              Compare two sessions or cohorts by quality, hesitation, overlap, engagement drift, and friction.
-            </p>
-            <Link href={defaultCompareIds ? `/compare?ids=${defaultCompareIds}` : "/compare"} className="primary-link inline">
-              Launch compare view
-            </Link>
-          </section>
-
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Behavior</span>
-            <h2>Topic coverage</h2>
-            <div className="badge-row">
-              {Array.from(new Set(bundles.flatMap((bundle) => bundle.content.topic_labels))).slice(0, 12).map((topic) => (
-                <span className="badge" key={topic}>
-                  {topic}
-                </span>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Audience</span>
-            <h2>Language mix</h2>
-            <div className="stack compact">
-              {bundles.slice(0, 5).map((bundle) => (
-                <div className="info-row" key={bundle.session.session_id}>
-                  <strong>{bundle.session.title}</strong>
-                  <span className="microcopy">
-                    {bundle.profile.lang_mix.label} · speech {formatPct(bundle.quality.speech_ratio)} · {bundle.session.speaker_count} speakers
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel panel-spacious">
-            <span className="eyebrow muted">Benchmarks</span>
-            <h2>Capability and quality coverage</h2>
-            <div className="table-shell">
-              <table className="analytics-table">
-                <thead>
-                  <tr>
-                    <th>Dataset</th>
-                    <th>Status</th>
-                    <th>Tasks</th>
-                    <th>Current metric snapshot</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {benchmarks.registry.map((entry) => {
-                    const matching = benchmarks.results.filter((result) => result.dataset_id === entry.dataset_id);
-                    return (
-                      <tr key={entry.benchmark_id}>
-                        <td>
-                          <strong>{entry.title}</strong>
-                          <div className="microcopy">{entry.dataset_id}</div>
-                        </td>
-                        <td><span className={`badge ${entry.status === "ready" ? "ok" : "warn"}`}>{entry.status}</span></td>
-                        <td>{entry.tasks.map((task) => task.label).join(", ")}</td>
-                        <td>
-                          <div className="badge-row">
-                            {matching.slice(0, 3).map((result) => (
-                              <span className="badge" key={result.benchmark_id}>
-                                {result.task_type}: {result.metrics[0] ? formatMetric(result.metrics[0].value) : result.status}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </aside>
       </section>
     </main>
   );

@@ -16,6 +16,9 @@ dependencies = [
   "python-multipart>=0.0.9,<1",
 ]
 
+[project.scripts]
+spectrum = "spectrum_api.cli:main"
+
 [project.optional-dependencies]
 audio = [
   "librosa>=0.10,<1",

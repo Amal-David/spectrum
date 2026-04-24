@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import wave
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from spectrum_api.cli import main as spectrum_cli_main
 from spectrum_pipeline.importers import import_demo_pack
 from spectrum_pipeline.analyzer import analyze_audio_file
 from spectrum_pipeline.benchmarks import benchmark_results
@@ -28,6 +30,38 @@ def _write_test_wav(path: Path) -> None:
         handle.setsampwidth(2)
         handle.setframerate(sample_rate)
         handle.writeframes(pcm.tobytes())
+
+
+def _write_long_test_wav(path: Path, duration_sec: float = 12.0) -> None:
+    sample_rate = 16000
+    timestamps = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
+    samples = (0.18 * np.sin(2 * math.pi * 210 * timestamps)).astype(np.float32)
+    pcm = np.clip(samples * 32767, -32768, 32767).astype(np.int16)
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(sample_rate)
+        handle.writeframes(pcm.tobytes())
+
+
+def test_session_bundle_defaults_empty_conversation_report() -> None:
+    from spectrum_core.models import SessionBundle
+
+    bundle = SessionBundle.model_validate(
+        {
+            "session": {
+                "session_id": "old-bundle",
+                "title": "Old Bundle",
+                "analysis_mode": "full",
+                "duration_sec": 0,
+                "speaker_count": 0,
+            }
+        }
+    )
+
+    assert bundle.conversation_report.report_type == "human_ai_diagnostic"
+    assert bundle.conversation_report.findings == []
+    assert bundle.conversation_report.executive_summary.call_outcome == "unknown"
 
 
 def test_analyzer_emits_profile_metrics_and_events(tmp_path: Path) -> None:
@@ -72,6 +106,40 @@ def test_analyzer_emits_profile_metrics_and_events(tmp_path: Path) -> None:
         timestamps = [sample["timestamp_ms"] for sample in track["samples"]]
         assert timestamps == sorted(timestamps)
         assert all(0 <= timestamp <= round(result.duration_sec * 1000) for timestamp in timestamps)
+
+
+def test_cli_analyze_creates_bundle(monkeypatch: Any, tmp_path: Path) -> None:
+    audio_path = tmp_path / "cli.wav"
+    _write_test_wav(audio_path)
+    opened_urls: list[str] = []
+    job_id = "cli-quickstart-test"
+    run_root = Path("runs") / job_id
+    if run_root.exists():
+        shutil.rmtree(run_root)
+
+    monkeypatch.setattr("spectrum_api.cli.uuid.uuid4", lambda: job_id)
+    monkeypatch.setattr("spectrum_api.cli.webbrowser.open", lambda url: opened_urls.append(url))
+
+    exit_code = spectrum_cli_main(
+        [
+            "analyze",
+            str(audio_path),
+            "--dashboard-url",
+            "http://127.0.0.1:3000",
+            "--agent-version",
+            "cli-agent-v1",
+            "--expected-user-goal",
+            "complete a CLI report smoke test",
+            "--open",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (run_root / "bundle.json").exists()
+    bundle_payload = json.loads((run_root / "bundle.json").read_text())
+    assert bundle_payload["conversation_report"]["context"]["agent_version"] == "cli-agent-v1"
+    assert bundle_payload["conversation_report"]["context"]["expected_user_goal"] == "complete a CLI report smoke test"
+    assert opened_urls == [f"http://127.0.0.1:3000/sessions/{job_id}"]
 
 
 def test_benchmark_sentence_labels_drive_transcript_affect(tmp_path: Path) -> None:
@@ -265,6 +333,15 @@ def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path
                     },
                 ],
                 "human_summary": "The human sounds uncertain about pricing.",
+                "report_enrichment": {
+                    "overall_diagnosis": "The user pricing intent remains unresolved.",
+                    "call_outcome": "needs_product_review",
+                    "likely_causes": ["The AI did not answer the pricing request directly."],
+                    "unresolved_intents": ["The human asked about pricing but did not receive a concrete answer."],
+                    "agent_behavior_notes": ["Assistant framing stayed generic."],
+                    "recovery_notes": [],
+                    "confidence": 0.81,
+                },
             },
             [],
         ),
@@ -280,6 +357,95 @@ def test_openai_role_hints_drive_human_focused_bundle(monkeypatch: Any, tmp_path
     assert any(signal["key"] == "hesitation" for signal in bundle_payload["signals"])
     assert all("evidence_class" in signal for signal in bundle_payload["signals"])
     assert bundle_payload["metrics"]["talk_ratio"]["value"] <= 1
+    assert bundle_payload["conversation_report"]["executive_summary"]["overall_diagnosis"] == "The user pricing intent remains unresolved."
+    assert any(finding["source"] in {"provider", "hybrid"} for finding in bundle_payload["conversation_report"]["findings"])
+
+
+def test_human_ai_conversation_report_surfaces_comprehensive_findings(tmp_path: Path) -> None:
+    audio_path = tmp_path / "conversation-report.wav"
+    _write_long_test_wav(audio_path)
+
+    analyze_audio_file(
+        audio_path,
+        analysis_mode="full",
+        metadata={
+            "source_type": "direct_audio_file",
+            "call_scenario": "refund status voice agent",
+            "agent_version": "agent-v12",
+            "expected_user_goal": "get a clear refund status",
+            "expected_successful_outcome": "human leaves with a next step",
+            "transcript_hint": "I need help getting my refund status. Sorry I am not sure. I am confused and want a human representative.",
+            "speaker_segments": [
+                {
+                    "turn_id": "report-turn-human-1",
+                    "speaker_id": "speaker_0",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "I need help getting my refund status. Can you check it?",
+                    "confidence": 0.93,
+                },
+                {
+                    "turn_id": "report-turn-ai-1",
+                    "speaker_id": "speaker_1",
+                    "start_ms": 6200,
+                    "end_ms": 7100,
+                    "text": "Sorry, I am not sure.",
+                    "confidence": 0.9,
+                },
+                {
+                    "turn_id": "report-turn-human-2",
+                    "speaker_id": "speaker_0",
+                    "start_ms": 7800,
+                    "end_ms": 9200,
+                    "text": "I am confused and want a human representative.",
+                    "confidence": 0.92,
+                },
+            ],
+            "speaker_role_hints": {"speaker_0": "human", "speaker_1": "ai"},
+        },
+        job_id="test-human-ai-conversation-report",
+    )
+
+    bundle_payload = json.loads((Path("runs") / "test-human-ai-conversation-report" / "bundle.json").read_text())
+    report = bundle_payload["conversation_report"]
+    categories = {finding["category"] for finding in report["findings"]}
+
+    assert report["executive_summary"]["call_outcome"] == "needs_product_review"
+    assert {"agent_latency", "answer_quality", "intent_resolution", "friction_or_escalation", "agent_recovery"}.issubset(categories)
+    assert report["human_experience"]["details"]
+    assert report["agent_behavior"]["details"]
+    assert report["conversation_arc"]
+    assert report["context"]["agent_version"] == "agent-v12"
+    assert all(finding["confidence"] > 0 for finding in report["findings"])
+    assert all(finding["evidence_refs"] for finding in report["findings"])
+
+
+def test_manual_role_override_rebuilds_conversation_report(tmp_path: Path) -> None:
+    audio_path = tmp_path / "manual-report-override.wav"
+    _write_long_test_wav(audio_path)
+
+    analyze_audio_file(
+        audio_path,
+        analysis_mode="full",
+        metadata={
+            "transcript_hint": "Hello there. I need help with my account. Sorry I cannot help.",
+            "speaker_segments": [
+                {"turn_id": "manual-report-ai", "speaker_id": "speaker_0", "start_ms": 0, "end_ms": 900, "text": "Hello there.", "confidence": 0.9},
+                {"turn_id": "manual-report-human", "speaker_id": "speaker_1", "start_ms": 1200, "end_ms": 2300, "text": "I need help with my account.", "confidence": 0.9},
+                {"turn_id": "manual-report-ai-2", "speaker_id": "speaker_0", "start_ms": 6200, "end_ms": 7000, "text": "Sorry I cannot help.", "confidence": 0.9},
+            ],
+            "speaker_role_hints": {"speaker_0": "human", "speaker_1": "ai"},
+        },
+        job_id="test-manual-report-override",
+    )
+
+    bundle = apply_manual_role_overrides("test-manual-report-override", {"speaker_0": "ai", "speaker_1": "human"})
+    categories = {finding.category for finding in bundle.conversation_report.findings}
+
+    assert bundle.speaker_roles.primary_human_speaker_id == "speaker_1"
+    assert bundle.speaker_roles.primary_ai_speaker_id == "speaker_0"
+    assert "agent_latency" in categories
+    assert bundle.conversation_report.executive_summary.confidence > 0
 
 
 def test_local_asr_is_default_and_records_readiness(monkeypatch: Any, tmp_path: Path) -> None:

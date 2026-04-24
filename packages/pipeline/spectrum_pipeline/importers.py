@@ -26,6 +26,7 @@ from spectrum_core.models import (
 )
 from spectrum_core.registry import build_adapter_inventory
 
+from .conversation_report import build_conversation_report
 from .service import (
     ProcessSessionOptions,
     SessionStore,
@@ -247,6 +248,40 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
             artifacts=artifacts,
         )
         waveform = WaveformArtifact(duration_ms=int(session_row["duration_ms"]))
+        stage_status = build_stage_status(
+            artifacts,
+            diagnostics,
+            quality,
+            environment,
+            profile_display,
+            profile_coverage,
+            speaker_roles,
+            content,
+            questions,
+            signals,
+            diarization,
+            waveform,
+            spectrogram,
+            prosody_tracks,
+            nonverbal_cues,
+            timeline_tracks,
+        )
+        conversation_report = build_conversation_report(
+            session_id=job_id,
+            metadata=metadata,
+            quality=quality,
+            speaker_roles=speaker_roles,
+            diarization=diarization,
+            speakers=speakers,
+            turns=turns,
+            events=events,
+            questions=questions,
+            content=content,
+            signals=signals,
+            metrics=result.metrics,
+            diagnostics=diagnostics,
+            stage_status=stage_status,
+        )
         bundle = build_session_bundle(
             result,
             session_title=session_row["title"],
@@ -268,25 +303,9 @@ def import_demo_pack(zip_path: Path = DEMO_PACK_PATH) -> list[SessionBundle]:
             content=content,
             questions=questions,
             signals=signals,
-            stage_status=build_stage_status(
-                artifacts,
-                diagnostics,
-                quality,
-                environment,
-                profile_display,
-                profile_coverage,
-                speaker_roles,
-                content,
-                questions,
-                signals,
-                diarization,
-                waveform,
-                spectrogram,
-                prosody_tracks,
-                nonverbal_cues,
-                timeline_tracks,
-            ),
+            stage_status=stage_status,
             readiness_tier="full",
+            conversation_report=conversation_report,
         )
         persist_session_artifacts(
             job_id,

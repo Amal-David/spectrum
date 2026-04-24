@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spectrum Sample Human-AI Conversation Reports</title>
+    <style>
+      :root {
+        --page: #f4f5f7;
+        --paper: #ffffff;
+        --ink: #17202c;
+        --muted: #5c6675;
+        --subtle: #eef1f4;
+        --line: #d9dee5;
+        --line-strong: #b9c0ca;
+        --blue: #183a5a;
+        --risk: #a73434;
+        --watch: #90612a;
+        --ok: #2d6b4f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family: Aptos, "IBM Plex Sans", "Helvetica Neue", Helvetica, sans-serif;
+        font-size: 15px;
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .hero,
+      .panel,
+      .report {
+        border: 1px solid var(--line);
+        background: var(--paper);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+        gap: 28px;
+        padding: 34px 38px;
+        border-top: 5px solid var(--blue);
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+
+      h1 {
+        max-width: 760px;
+        font-size: clamp(2rem, 4vw, 3.35rem);
+        line-height: 1.03;
+        font-weight: 720;
+      }
+
+      h2 {
+        font-size: clamp(1.35rem, 2.4vw, 2rem);
+        font-weight: 700;
+      }
+
+      h3 {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      p {
+        line-height: 1.55;
+      }
+
+      .eyebrow,
+      .badge,
+      .micro {
+        font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        margin-bottom: 12px;
+        color: var(--blue);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow.muted {
+        color: var(--muted);
+      }
+
+      .hero p {
+        max-width: 780px;
+        color: var(--muted);
+      }
+
+      .hero-card {
+        display: grid;
+        align-content: start;
+        border: 1px solid var(--line);
+      }
+
+      .metric {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: baseline;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric:last-child {
+        border-bottom: 0;
+      }
+
+      .metric strong {
+        font-size: 1.1rem;
+        font-weight: 720;
+        text-align: right;
+      }
+
+      .section {
+        margin-top: 20px;
+      }
+
+      .panel,
+      .report {
+        padding: 28px 32px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0;
+        margin-top: 18px;
+        border: 1px solid var(--line);
+      }
+
+      .use-case {
+        display: grid;
+        grid-template-columns: 44px minmax(180px, 0.8fr) minmax(0, 1.4fr);
+        gap: 14px;
+        align-items: baseline;
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fbfcfd;
+      }
+
+      .use-case:last-child {
+        border-bottom: 0;
+      }
+
+      .use-case h3,
+      .use-case p {
+        margin: 0;
+      }
+
+      .report {
+        margin-top: 20px;
+        border-top: 4px solid var(--blue);
+      }
+
+      .report-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 20px;
+        align-items: start;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 7px;
+        background: #f8fafc;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .badge.risk {
+        border-color: rgba(167, 52, 52, 0.28);
+        background: #fff6f6;
+        color: var(--risk);
+      }
+
+      .badge.watch {
+        border-color: rgba(144, 97, 42, 0.28);
+        background: #fff9ef;
+        color: var(--watch);
+      }
+
+      .badge.ok {
+        border-color: rgba(45, 107, 79, 0.28);
+        background: #f4fbf7;
+        color: var(--ok);
+      }
+
+      .micro {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .diagnosis {
+        margin-top: 18px;
+        padding: 16px 18px;
+        border-left: 4px solid var(--blue);
+        background: #f7f9fb;
+      }
+
+      .diagnosis p {
+        margin-bottom: 0;
+        color: var(--ink);
+      }
+
+      details {
+        margin-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      summary {
+        cursor: pointer;
+        padding: 14px 0;
+        font-weight: 700;
+        color: var(--blue);
+      }
+
+      .details-body {
+        display: grid;
+        gap: 10px;
+        padding: 0 0 16px;
+      }
+
+      .finding {
+        display: grid;
+        gap: 7px;
+        padding: 13px 14px;
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--line-strong);
+        background: #ffffff;
+      }
+
+      .finding strong {
+        font-size: 1.05rem;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .transcript {
+        display: grid;
+        gap: 0;
+        border: 1px solid var(--line);
+      }
+
+      .turn {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 14px;
+        padding: 11px 13px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .turn.ai {
+        background: #f8fafc;
+      }
+
+      .turn:last-child {
+        border-bottom: 0;
+      }
+
+      .sources li {
+        margin: 8px 0;
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        main {
+          width: 100%;
+          padding: 0;
+        }
+
+        .hero,
+        .panel,
+        .report {
+          break-inside: avoid;
+          box-shadow: none;
+        }
+      }
+
+      @media (max-width: 820px) {
+        .hero,
+        .grid,
+        .report-head,
+        .split {
+          grid-template-columns: 1fr;
+        }
+
+        .grid,
+        .hero-card {
+          border-bottom: 0;
+        }
+
+        .use-case,
+        .metric {
+          border-bottom: 1px solid var(--line);
+        }
+
+        .use-case {
+          grid-template-columns: 1fr;
+        }
+
+        .turn {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div>
+          <span class="eyebrow">Spectrum Sample Pack</span>
+          <h1>Human-AI Conversation Reports</h1>
+          <p>
+            Four synthetic but realistic reports showing how Spectrum can analyze human-AI voice calls from multiple product angles:
+            outcome, evidence, likely cause, human experience, agent behavior, trust limits, and transcript proof.
+          </p>
+          <p class="micro">
+            Sample data: <a href="./sample_reports.json">sample_reports.json</a>. These are illustrative demos, not real customer calls.
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="metric">
+            <span class="micro">Domains sampled</span>
+            <strong>4</strong>
+            <span class="micro">Support, scheduling, sales, billing</span>
+          </div>
+          <div class="metric">
+            <span class="micro">Use-case research set</span>
+            <strong>5</strong>
+            <span class="micro">Includes surveys/feedback as the next report mode</span>
+          </div>
+          <div class="metric">
+            <span class="micro">Report stance</span>
+            <strong>Comprehensive</strong>
+            <span class="micro">Evidence plus interpretation, not a metric dump</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel section">
+        <span class="eyebrow muted">Market Scan</span>
+        <h2>Common AI-human voice conversation types</h2>
+        <p>
+          A quick scan of current voice-agent positioning and guides points to five recurring call types. The four reports below cover
+          the first four; surveys and feedback are included as the next obvious sample because they become useful once report fields
+          can aggregate into analytics.
+        </p>
+        <div class="grid">
+          <article class="use-case">
+            <span class="badge ok">1</span>
+            <h3>Customer support and issue resolution</h3>
+            <p class="micro">Order status, FAQs, troubleshooting, routing, and after-hours support.</p>
+          </article>
+          <article class="use-case">
+            <span class="badge ok">2</span>
+            <h3>Appointment scheduling and reminders</h3>
+            <p class="micro">Booking, rescheduling, cancellations, reminders, and no-show reduction.</p>
+          </article>
+          <article class="use-case">
+            <span class="badge watch">3</span>
+            <h3>Outbound sales follow-up and qualification</h3>
+            <p class="micro">Warm lead response, discovery, objection handling, and human handoff.</p>
+          </article>
+          <article class="use-case">
+            <span class="badge risk">4</span>
+            <h3>Billing, payment, and collections follow-up</h3>
+            <p class="micro">Payment reminders, failed payment handling, hardship, and escalation.</p>
+          </article>
+          <article class="use-case">
+            <span class="badge watch">5</span>
+            <h3>Surveys, feedback, and post-service checks</h3>
+            <p class="micro">NPS, satisfaction, structured feedback, and post-call experience capture.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="report">
+        <div class="report-head">
+          <div>
+            <span class="eyebrow muted">Report 1</span>
+            <h2>Customer Support: Order Status Call</h2>
+            <p class="micro">Expected goal: get a clear order status and next step in under two minutes.</p>
+          </div>
+          <div class="badge-row">
+            <span class="badge risk">needs product review</span>
+            <span class="badge">confidence 84%</span>
+            <span class="badge">support-agent-v18</span>
+          </div>
+        </div>
+        <div class="diagnosis">
+          <strong>Diagnosis</strong>
+          <p>The agent identified the order-status intent, but delayed the lookup, repeated authentication, and never converted tracking data into a clear promise.</p>
+        </div>
+        <details open>
+          <summary>Comprehensive findings</summary>
+          <div class="details-body">
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">agent_latency</span><span class="badge">88%</span></div>
+              <strong>Tool lookup created visible dead air</strong>
+              <span>The AI took 7200 ms after the user provided the order number. The user filled the silence with uncertainty.</span>
+              <span class="micro">Likely cause: lookup or ASR finalization blocked the response without a progress phrase.</span>
+              <span class="micro">Next check: acknowledge lookup progress after 1500 ms.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">clarification_loop</span><span class="badge">79%</span></div>
+              <strong>Authentication loop repeated the same request</strong>
+              <span>The AI asked for identity confirmation twice after the user already provided account detail.</span>
+              <span class="micro">Likely cause: prior slot fill was not persisted after failed lookup.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">intent_resolution</span><span class="badge">81%</span></div>
+              <strong>Order status was not translated into a customer-ready answer</strong>
+              <span>The call ended with "it should update soon" instead of a concrete date, escalation threshold, or next step.</span>
+            </article>
+          </div>
+        </details>
+        <details>
+          <summary>Human experience, agent behavior, and trust limits</summary>
+          <div class="details-body split">
+            <div>
+              <h3>Human experience</h3>
+              <p>The human starts with a simple goal, then shows uncertainty after silence and repetition.</p>
+              <p class="micro">Max wait: 7200 ms. Two uncertainty markers. One "are you still there?" moment.</p>
+            </div>
+            <div>
+              <h3>Agent behavior</h3>
+              <p>Intent recognition is strong, but lookup progress, slot persistence, and resolution language need work.</p>
+              <p class="micro">Trust limit: likely-cause claims about lookup should be verified against backend trace logs.</p>
+            </div>
+          </div>
+        </details>
+        <details>
+          <summary>Transcript evidence</summary>
+          <div class="details-body transcript">
+            <div class="turn ai"><span class="micro">AI 0:00</span>Thanks for calling Acme. I can help with order status. What is your order number?</div>
+            <div class="turn"><span class="micro">Human 0:04</span>It is AC-1948. I just want to know if it is coming today.</div>
+            <div class="turn ai"><span class="micro">AI 0:27</span>I found the order, but I need to confirm the email on the account again.</div>
+            <div class="turn"><span class="micro">Human 0:34</span>I already gave that. It is amal at example dot com. Are you still checking?</div>
+            <div class="turn ai"><span class="micro">AI 0:49</span>The package has a carrier scan from yesterday. It should update soon.</div>
+          </div>
+        </details>
+      </section>
+
+      <section class="report">
+        <div class="report-head">
+          <div>
+            <span class="eyebrow muted">Report 2</span>
+            <h2>Appointment Scheduling: Clinic Reminder</h2>
+            <p class="micro">Expected goal: move an appointment to Friday afternoon and receive confirmation.</p>
+          </div>
+          <div class="badge-row">
+            <span class="badge risk">needs product review</span>
+            <span class="badge">confidence 86%</span>
+            <span class="badge">clinic-scheduler-v7</span>
+          </div>
+        </div>
+        <div class="diagnosis">
+          <strong>Diagnosis</strong>
+          <p>The agent handled reminder intent but failed the rescheduling task because it offered unavailable slots and did not confirm the final state.</p>
+        </div>
+        <details open>
+          <summary>Comprehensive findings</summary>
+          <div class="details-body">
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">critical</span><span class="badge">answer_quality</span><span class="badge">90%</span></div>
+              <strong>Agent offered an unavailable slot</strong>
+              <span>The AI offered Friday 3:30 PM, then later said Friday afternoon was unavailable.</span>
+              <span class="micro">Likely cause: stale availability cache before calendar confirmation.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">agent_latency</span><span class="badge">82%</span></div>
+              <strong>Calendar search pause is too long</strong>
+              <span>The AI paused 6400 ms after the patient asked for Friday afternoon.</span>
+              <span class="micro">Next check: add a progress phrase and measure barge-in reduction.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">intent_resolution</span><span class="badge">84%</span></div>
+              <strong>Appointment state is unresolved at hangup</strong>
+              <span>The call ends without a final confirmed appointment time.</span>
+            </article>
+          </div>
+        </details>
+        <details>
+          <summary>Human experience, agent behavior, and trust limits</summary>
+          <div class="details-body split">
+            <div>
+              <h3>Human experience</h3>
+              <p>The patient is cooperative but loses confidence when availability changes mid-call.</p>
+              <p class="micro">One barge-in after silence. One explicit confirmation request. No resolved final appointment state.</p>
+            </div>
+            <div>
+              <h3>Agent behavior</h3>
+              <p>The agent is good at reminder scripting but weak at real-time calendar grounding.</p>
+              <p class="micro">Trust limit: exact root cause needs calendar/tool trace.</p>
+            </div>
+          </div>
+        </details>
+        <details>
+          <summary>Transcript evidence</summary>
+          <div class="details-body transcript">
+            <div class="turn ai"><span class="micro">AI 0:00</span>Hi, this is Northside Clinic calling to remind you about your appointment tomorrow at 10 AM.</div>
+            <div class="turn"><span class="micro">Human 0:09</span>Can I move that to Friday afternoon instead?</div>
+            <div class="turn ai"><span class="micro">AI 0:20</span>I can do Friday at 3:30 PM. Let me confirm that.</div>
+            <div class="turn ai"><span class="micro">AI 0:33</span>Actually Friday afternoon is unavailable. I can keep tomorrow.</div>
+            <div class="turn"><span class="micro">Human 0:42</span>Wait, so do I have Friday or not?</div>
+          </div>
+        </details>
+      </section>
+
+      <section class="report">
+        <div class="report-head">
+          <div>
+            <span class="eyebrow muted">Report 3</span>
+            <h2>Outbound Sales: Warm Lead Qualification</h2>
+            <p class="micro">Expected goal: qualify the lead and book a human follow-up if qualified.</p>
+          </div>
+          <div class="badge-row">
+            <span class="badge watch">completed with watch items</span>
+            <span class="badge">confidence 82%</span>
+            <span class="badge">sdr-agent-v4</span>
+          </div>
+        </div>
+        <div class="diagnosis">
+          <strong>Diagnosis</strong>
+          <p>The agent qualified budget and timing, but over-talked after a buyer objection and failed to secure a clear handoff.</p>
+        </div>
+        <details open>
+          <summary>Comprehensive findings</summary>
+          <div class="details-body">
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">turn_taking</span><span class="badge">83%</span></div>
+              <strong>Agent over-talked after buyer objection</strong>
+              <span>The AI spoke for 31 seconds after the buyer raised a competitor concern.</span>
+              <span class="micro">Likely cause: pitch script continued instead of switching to objection discovery.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge watch">watch</span><span class="badge">intent_resolution</span><span class="badge">78%</span></div>
+              <strong>Sales handoff was not confirmed</strong>
+              <span>The agent suggested a specialist call but did not confirm a time or owner.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge watch">watch</span><span class="badge">human_uncertainty</span><span class="badge">74%</span></div>
+              <strong>Buyer uncertainty increased after pricing answer</strong>
+              <span>The buyer asked for actual numbers after abstract pricing tier language.</span>
+            </article>
+          </div>
+        </details>
+        <details>
+          <summary>Human experience, agent behavior, and trust limits</summary>
+          <div class="details-body split">
+            <div>
+              <h3>Human experience</h3>
+              <p>The buyer is engaged, but uncertainty increases when pricing and competitor comparison get abstract.</p>
+              <p class="micro">Buyer asks specific pricing question. Buyer raises competitor concern. Buyer does not commit to a meeting time.</p>
+            </div>
+            <div>
+              <h3>Agent behavior</h3>
+              <p>The agent captures qualification data but behaves more like a pitch bot than a junior SDR after objection.</p>
+              <p class="micro">Trust limit: CRM outcome is not attached, so handoff failure is inferred from transcript.</p>
+            </div>
+          </div>
+        </details>
+        <details>
+          <summary>Transcript evidence</summary>
+          <div class="details-body transcript">
+            <div class="turn ai"><span class="micro">AI 0:00</span>Hi Maya, you requested pricing for SpectrumOps. Is now still a good time for two quick questions?</div>
+            <div class="turn"><span class="micro">Human 0:07</span>Sure, we are comparing a few tools and need something this quarter.</div>
+            <div class="turn"><span class="micro">Human 0:20</span>The concern is your competitor already includes analytics in their plan.</div>
+            <div class="turn ai"><span class="micro">AI 0:24</span>Our platform is very powerful and has a number of features across analytics, routing, reporting, and automation...</div>
+            <div class="turn"><span class="micro">Human 0:58</span>I think maybe I need to see actual numbers for a ten-person team.</div>
+          </div>
+        </details>
+      </section>
+
+      <section class="report">
+        <div class="report-head">
+          <div>
+            <span class="eyebrow muted">Report 4</span>
+            <h2>Billing: Payment Follow-Up</h2>
+            <p class="micro">Expected goal: understand the payment issue and choose a safe next step.</p>
+          </div>
+          <div class="badge-row">
+            <span class="badge risk">needs product review</span>
+            <span class="badge">confidence 87%</span>
+            <span class="badge">billing-agent-v6</span>
+          </div>
+        </div>
+        <div class="diagnosis">
+          <strong>Diagnosis</strong>
+          <p>The agent explained the failed payment, but moved too quickly into collection language and did not safely handle hardship or escalation.</p>
+        </div>
+        <details open>
+          <summary>Comprehensive findings</summary>
+          <div class="details-body">
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">critical</span><span class="badge">friction_or_escalation</span><span class="badge">91%</span></div>
+              <strong>Human requested a human agent but AI continued</strong>
+              <span>The user asked for a person after mentioning hardship, and the AI continued the payment script.</span>
+              <span class="micro">Likely cause: escalation intent was not prioritized over collection flow.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">answer_quality</span><span class="badge">84%</span></div>
+              <strong>Payment explanation is procedurally correct but emotionally unsafe</strong>
+              <span>The AI stated retry policy but did not acknowledge the user's hardship.</span>
+            </article>
+            <article class="finding">
+              <div class="badge-row"><span class="badge risk">risk</span><span class="badge">transcript_or_audio_risk</span><span class="badge">78%</span></div>
+              <strong>Compliance review is required for outbound payment language</strong>
+              <span>Consent source, jurisdiction, and approved-script version are not attached to this sample.</span>
+            </article>
+          </div>
+        </details>
+        <details>
+          <summary>Human experience, agent behavior, and trust limits</summary>
+          <div class="details-body split">
+            <div>
+              <h3>Human experience</h3>
+              <p>The human moves from confusion to hardship to escalation request.</p>
+              <p class="micro">Hardship phrase detected. Human-agent request detected. No transfer confirmation.</p>
+            </div>
+            <div>
+              <h3>Agent behavior</h3>
+              <p>The agent is factually coherent but fails the sensitive-conversation handling requirement.</p>
+              <p class="micro">Trust limit: consent source, approved script version, and jurisdiction are not attached.</p>
+            </div>
+          </div>
+        </details>
+        <details>
+          <summary>Transcript evidence</summary>
+          <div class="details-body transcript">
+            <div class="turn ai"><span class="micro">AI 0:00</span>Hi, this is a reminder that your subscription payment did not go through yesterday.</div>
+            <div class="turn"><span class="micro">Human 0:06</span>I did not know that. What happens now?</div>
+            <div class="turn"><span class="micro">Human 0:18</span>I lost my card and I am dealing with a family emergency.</div>
+            <div class="turn"><span class="micro">Human 0:30</span>Can I please talk to a person about this?</div>
+            <div class="turn ai"><span class="micro">AI 0:36</span>I can take a new card now or schedule another retry for tomorrow.</div>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel section">
+        <span class="eyebrow muted">Sources</span>
+        <h2>Research notes used for the sample set</h2>
+        <ul class="sources">
+          <li><a href="https://agixtech.com/blog/ai-voice-agents-complete-guide/">AGIX Technologies AI voice agents guide</a></li>
+          <li><a href="https://cresta.com/guides/ai-voice-agents-customer-support">Cresta customer support voice AI use cases</a></li>
+          <li><a href="https://www.quickvoice.co/blog/inbound-vs-outbound-ai-voice-agents">QuickVoice inbound vs outbound AI voice agents guide</a></li>
+          <li><a href="https://voiceinfra.ai/use-cases/outbound-call-automation">VoiceInfra outbound call automation use cases</a></li>
+          <li><a href="https://6890003.fs1.hubspotusercontent-na1.net/hubfs/6890003/2025%20State%20of%20Voice%20AI%20Report-Deepgram.pdf">Deepgram 2025 State of Voice AI report</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
